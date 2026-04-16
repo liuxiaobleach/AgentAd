@@ -1,0 +1,219 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --bg-primary: #0a0e1a;
+  --bg-secondary: #111827;
+  --bg-card: #151c2e;
+  --bg-card-hover: #1a2238;
+  --border-primary: #1e293b;
+  --border-glow: #06b6d4;
+  --text-primary: #e2e8f0;
+  --text-secondary: #94a3b8;
+  --text-muted: #64748b;
+  --accent-cyan: #06b6d4;
+  --accent-purple: #a855f7;
+  --accent-pink: #ec4899;
+  --accent-green: #10b981;
+  --accent-yellow: #f59e0b;
+  --accent-red: #ef4444;
+  --glow-cyan: 0 0 20px rgba(6, 182, 212, 0.3);
+  --glow-purple: 0 0 20px rgba(168, 85, 247, 0.3);
+  --glow-green: 0 0 20px rgba(16, 185, 129, 0.3);
+}
+
+body {
+  color: var(--text-primary);
+  background: var(--bg-primary);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+}
+
+/* ---- Scrollbar ---- */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: var(--bg-primary); }
+::-webkit-scrollbar-thumb { background: #334155; border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: #475569; }
+
+/* ---- Global overrides for white cards -> dark cards ---- */
+.bg-white {
+  background-color: var(--bg-card) !important;
+  border-color: var(--border-primary) !important;
+}
+.bg-slate-50, .bg-slate-100 {
+  background-color: rgba(15, 23, 42, 0.6) !important;
+}
+.border-slate-200, .border-slate-100 {
+  border-color: var(--border-primary) !important;
+}
+.text-slate-900 { color: var(--text-primary) !important; }
+.text-slate-800 { color: #cbd5e1 !important; }
+.text-slate-700 { color: #94a3b8 !important; }
+.text-slate-600 { color: #94a3b8 !important; }
+.text-slate-500 { color: var(--text-muted) !important; }
+.text-slate-400 { color: #475569 !important; }
+.hover\:bg-slate-50:hover { background-color: var(--bg-card-hover) !important; }
+.hover\:bg-slate-100:hover { background-color: var(--bg-card-hover) !important; }
+.hover\:bg-slate-200:hover { background-color: rgba(30, 41, 59, 0.8) !important; }
+.divide-slate-100 > :not([hidden]) ~ :not([hidden]) { border-color: var(--border-primary) !important; }
+.divide-slate-200 > :not([hidden]) ~ :not([hidden]) { border-color: var(--border-primary) !important; }
+
+/* ---- Inputs ---- */
+input, select, textarea {
+  background-color: var(--bg-primary) !important;
+  border-color: #1e293b !important;
+  color: var(--text-primary) !important;
+}
+input:focus, select:focus, textarea:focus {
+  border-color: var(--accent-cyan) !important;
+  box-shadow: 0 0 0 2px rgba(6, 182, 212, 0.2) !important;
+  outline: none !important;
+}
+input::placeholder, textarea::placeholder { color: #475569 !important; }
+
+/* ---- Primary button ---- */
+.bg-blue-600 {
+  background: linear-gradient(135deg, #0891b2, #06b6d4) !important;
+  border: 1px solid rgba(6, 182, 212, 0.3) !important;
+  box-shadow: var(--glow-cyan) !important;
+}
+.bg-blue-600:hover, .hover\:bg-blue-700:hover {
+  background: linear-gradient(135deg, #06b6d4, #22d3ee) !important;
+  box-shadow: 0 0 30px rgba(6, 182, 212, 0.4) !important;
+}
+
+/* ---- Tables ---- */
+table { border-collapse: collapse; }
+thead tr {
+  background-color: rgba(15, 23, 42, 0.8) !important;
+}
+th {
+  color: var(--accent-cyan) !important;
+  font-size: 10px !important;
+  letter-spacing: 0.05em;
+}
+tbody tr { border-color: var(--border-primary) !important; }
+tbody tr:hover { background-color: var(--bg-card-hover) !important; }
+
+/* ---- Badges ---- */
+@layer utilities {
+  .badge-verified {
+    @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold;
+    background: rgba(16, 185, 129, 0.15);
+    color: #34d399;
+    border: 1px solid rgba(16, 185, 129, 0.3);
+    text-shadow: 0 0 8px rgba(16, 185, 129, 0.5);
+  }
+  .badge-pending {
+    @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold;
+    background: rgba(245, 158, 11, 0.15);
+    color: #fbbf24;
+    border: 1px solid rgba(245, 158, 11, 0.3);
+  }
+  .badge-rejected {
+    @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold;
+    background: rgba(239, 68, 68, 0.15);
+    color: #f87171;
+    border: 1px solid rgba(239, 68, 68, 0.3);
+  }
+  .badge-review {
+    @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold;
+    background: rgba(168, 85, 247, 0.15);
+    color: #c084fc;
+    border: 1px solid rgba(168, 85, 247, 0.3);
+  }
+}
+
+/* ---- Card glow on hover ---- */
+.bg-white:hover {
+  border-color: rgba(6, 182, 212, 0.15) !important;
+}
+
+/* ---- Colored stat dots ---- */
+.bg-blue-500 { background-color: var(--accent-cyan) !important; box-shadow: 0 0 6px var(--accent-cyan); }
+.bg-green-500 { background-color: var(--accent-green) !important; box-shadow: 0 0 6px var(--accent-green); }
+.bg-yellow-500 { background-color: var(--accent-yellow) !important; box-shadow: 0 0 6px var(--accent-yellow); }
+.bg-red-500 { background-color: var(--accent-red) !important; box-shadow: 0 0 6px var(--accent-red); }
+.bg-orange-500 { background-color: #f97316 !important; box-shadow: 0 0 6px #f97316; }
+
+/* ---- Links ---- */
+.text-blue-600, a.text-blue-600 {
+  color: var(--accent-cyan) !important;
+}
+.text-blue-600:hover, a.text-blue-600:hover {
+  color: #22d3ee !important;
+  text-shadow: 0 0 8px rgba(6, 182, 212, 0.5);
+}
+
+/* ---- Green/Red text for decisions ---- */
+.text-green-600 { color: #34d399 !important; }
+.text-red-600 { color: #f87171 !important; }
+.text-orange-600 { color: #fbbf24 !important; }
+
+/* ---- Alert/info backgrounds ---- */
+.bg-red-50, .bg-red-50\/50, .bg-red-50\/40 {
+  background-color: rgba(239, 68, 68, 0.08) !important;
+}
+.bg-green-50, .bg-green-100, .bg-emerald-50 {
+  background-color: rgba(16, 185, 129, 0.08) !important;
+}
+.bg-blue-50, .bg-blue-50\/50 {
+  background-color: rgba(6, 182, 212, 0.08) !important;
+}
+.bg-purple-50 {
+  background-color: rgba(168, 85, 247, 0.08) !important;
+}
+.bg-yellow-50, .bg-yellow-100 {
+  background-color: rgba(245, 158, 11, 0.08) !important;
+}
+.bg-emerald-100, .bg-green-100 {
+  background-color: rgba(16, 185, 129, 0.1) !important;
+}
+
+/* ---- Code blocks ---- */
+pre {
+  background-color: var(--bg-primary) !important;
+  border: 1px solid var(--border-primary);
+}
+.bg-slate-900 {
+  background-color: #060a14 !important;
+}
+
+/* ---- Specific overrides ---- */
+.bg-gradient-to-r { background-image: none !important; }
+.from-blue-50 { background-color: rgba(6, 182, 212, 0.05) !important; }
+.from-slate-50 { background-color: rgba(15, 23, 42, 0.5) !important; }
+
+/* ---- Animated scan line for loading ---- */
+@keyframes scanline {
+  0% { transform: translateY(-100%); }
+  100% { transform: translateY(100vh); }
+}
+
+/* ---- Grid pattern background for main area ---- */
+main {
+  background:
+    linear-gradient(rgba(6, 182, 212, 0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(6, 182, 212, 0.03) 1px, transparent 1px),
+    var(--bg-primary);
+  background-size: 40px 40px;
+}
+
+/* ---- Stat card numbers glow ---- */
+.text-2xl.font-bold {
+  text-shadow: 0 0 10px rgba(226, 232, 240, 0.2);
+}
+
+/* ---- Risk score colors in dark mode ---- */
+.bg-green-100.text-green-800 {
+  background-color: rgba(16, 185, 129, 0.15) !important;
+  color: #34d399 !important;
+}
+.bg-yellow-100.text-yellow-800 {
+  background-color: rgba(245, 158, 11, 0.15) !important;
+  color: #fbbf24 !important;
+}
+.bg-red-100.text-red-800 {
+  background-color: rgba(239, 68, 68, 0.15) !important;
+  color: #f87171 !important;
+}

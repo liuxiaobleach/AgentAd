@@ -1,0 +1,131 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Advertiser {
+  id            String     @id @default(cuid())
+  name          String
+  walletAddress String?
+  contactEmail  String     @unique
+  createdAt     DateTime   @default(now())
+  creatives     Creative[]
+
+  @@map("advertisers")
+}
+
+model Creative {
+  id              String       @id @default(cuid())
+  advertiserId    String
+  advertiser      Advertiser   @relation(fields: [advertiserId], references: [id])
+  creativeName    String
+  projectName     String
+  imageUrl        String?
+  creativeHash    String?
+  landingUrl      String
+  telegramUrl     String?
+  clickUrl        String?
+  chainId         Int?
+  contractAddress String?
+  placementDomains String[]
+  notes           String?
+  status          CreativeStatus @default(DRAFT)
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+  auditCases      AuditCase[]
+  manifests       Manifest[]
+
+  @@map("creatives")
+}
+
+enum CreativeStatus {
+  DRAFT
+  PENDING_AUDIT
+  AUDITING
+  APPROVED
+  REJECTED
+}
+
+model AuditCase {
+  id             String         @id @default(cuid())
+  creativeId     String
+  creative       Creative       @relation(fields: [creativeId], references: [id])
+  status         AuditStatus    @default(PENDING)
+  riskScore      Float?
+  decision       AuditDecision?
+  policyVersion  String         @default("v1.0")
+  summary        String?
+  agentThinking  Json?          // Claude agent 的完整思考过程
+  submittedAt    DateTime       @default(now())
+  completedAt    DateTime?
+  evidences      AuditEvidence[]
+  attestation    Attestation?
+
+  @@map("audit_cases")
+}
+
+enum AuditStatus {
+  PENDING
+  TRIAGING
+  TOOLS_RUNNING
+  EVALUATING
+  MANUAL_REVIEW
+  COMPLETED
+}
+
+enum AuditDecision {
+  PASS
+  REJECT
+  MANUAL_REVIEW
+}
+
+model AuditEvidence {
+  id          String    @id @default(cuid())
+  auditCaseId String
+  auditCase   AuditCase @relation(fields: [auditCaseId], references: [id])
+  toolName    String
+  payload     Json
+  riskSignals Json?
+  createdAt   DateTime  @default(now())
+
+  @@map("audit_evidences")
+}
+
+model Attestation {
+  id              String            @id @default(cuid())
+  auditCaseId     String            @unique
+  auditCase       AuditCase         @relation(fields: [auditCaseId], references: [id])
+  attestationId   String            @unique
+  chainId         Int
+  txHash          String?
+  status          AttestationStatus @default(PENDING)
+  reportCID       String?
+  issuedAt        DateTime?
+  expiresAt       DateTime?
+  createdAt       DateTime          @default(now())
+
+  @@map("attestations")
+}
+
+enum AttestationStatus {
+  PENDING
+  ACTIVE
+  REVOKED
+  EXPIRED
+}
+
+model Manifest {
+  id            String   @id @default(cuid())
+  creativeId    String
+  creative      Creative @relation(fields: [creativeId], references: [id])
+  attestationId String
+  manifestJson  Json
+  version       Int      @default(1)
+  createdAt     DateTime @default(now())
+
+  @@map("manifests")
+}

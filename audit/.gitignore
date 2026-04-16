@@ -1,0 +1,31 @@
+# Environment & Secrets
+.env
+.env.local
+.env.*.local
+
+# Node.js
+node_modules/
+.next/
+.turbo/
+dist/
+build/
+*.tsbuildinfo
+next-env.d.ts
+
+# Uploads (user-generated content)
+uploads/
+
+# Go backend
+backend/uploads/
+backend/server
+backend/tmp/
+
+# OS
+.DS_Store
+
+# IDE
+.vscode/
+.idea/
+
+# Logs
+*.log

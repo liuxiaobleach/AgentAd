@@ -1,0 +1,284 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 820" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif">
+  <defs>
+    <filter id="shadow" x="-4%" y="-4%" width="108%" height="108%">
+      <feDropShadow dx="0" dy="2" stdDeviation="3" flood-opacity="0.1"/>
+    </filter>
+    <linearGradient id="headerGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" style="stop-color:#1e3a5f"/>
+      <stop offset="100%" style="stop-color:#2563eb"/>
+    </linearGradient>
+    <linearGradient id="greenGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#dcfce7"/>
+      <stop offset="100%" style="stop-color:#bbf7d0"/>
+    </linearGradient>
+    <linearGradient id="blueGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#dbeafe"/>
+      <stop offset="100%" style="stop-color:#bfdbfe"/>
+    </linearGradient>
+    <linearGradient id="orangeGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#fed7aa"/>
+      <stop offset="100%" style="stop-color:#fdba74"/>
+    </linearGradient>
+    <linearGradient id="purpleGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#e9d5ff"/>
+      <stop offset="100%" style="stop-color:#d8b4fe"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Background -->
+  <rect width="1200" height="820" rx="12" fill="#f8fafc"/>
+
+  <!-- Title Bar -->
+  <rect x="0" y="0" width="1200" height="60" rx="12" fill="url(#headerGrad)"/>
+  <rect x="0" y="30" width="1200" height="30" fill="url(#headerGrad)"/>
+  <text x="40" y="38" fill="white" font-size="20" font-weight="700">ZKDSP Ad Audit System - Architecture Overview</text>
+  <text x="1000" y="38" fill="rgba(255,255,255,0.7)" font-size="12">MVP v0.1.0</text>
+
+  <!-- ========== Layer 1: Advertiser Console ========== -->
+  <rect x="30" y="80" width="260" height="220" rx="10" fill="url(#greenGrad)" stroke="#86efac" stroke-width="1.5" filter="url(#shadow)"/>
+  <rect x="30" y="80" width="260" height="36" rx="10" fill="#16a34a"/>
+  <rect x="30" y="100" width="260" height="16" fill="#16a34a"/>
+  <text x="160" y="103" fill="white" font-size="13" font-weight="700" text-anchor="middle">Advertiser Console</text>
+
+  <rect x="45" y="128" width="230" height="28" rx="6" fill="white" opacity="0.85"/>
+  <text x="160" y="147" fill="#15803d" font-size="11" font-weight="600" text-anchor="middle">Dashboard</text>
+
+  <rect x="45" y="163" width="230" height="28" rx="6" fill="white" opacity="0.85"/>
+  <text x="160" y="182" fill="#15803d" font-size="11" font-weight="600" text-anchor="middle">Create / Edit Creative</text>
+
+  <rect x="45" y="198" width="230" height="28" rx="6" fill="white" opacity="0.85"/>
+  <text x="160" y="217" fill="#15803d" font-size="11" font-weight="600" text-anchor="middle">Audit Cases / Certificates</text>
+
+  <rect x="45" y="233" width="230" height="28" rx="6" fill="white" opacity="0.85"/>
+  <text x="160" y="252" fill="#15803d" font-size="11" font-weight="600" text-anchor="middle">Integration / Manifest</text>
+
+  <!-- ========== Arrow Console -> API Gateway ========== -->
+  <line x1="290" y1="190" x2="340" y2="190" stroke="#64748b" stroke-width="2" marker-end="url(#arrowhead)"/>
+  <defs>
+    <marker id="arrowhead" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+      <polygon points="0 0, 8 3, 0 6" fill="#64748b"/>
+    </marker>
+  </defs>
+
+  <!-- ========== Layer 2: API Gateway ========== -->
+  <rect x="345" y="80" width="140" height="60" rx="10" fill="url(#blueGrad)" stroke="#93c5fd" stroke-width="1.5" filter="url(#shadow)"/>
+  <text x="415" y="104" fill="#1e40af" font-size="12" font-weight="700" text-anchor="middle">API Gateway</text>
+  <text x="415" y="120" fill="#3b82f6" font-size="9" text-anchor="middle">Next.js Route Handlers</text>
+
+  <!-- ========== Arrow API -> Material Service ========== -->
+  <line x1="415" y1="140" x2="415" y2="160" stroke="#64748b" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+
+  <!-- ========== Layer 2b: Services ========== -->
+  <rect x="345" y="165" width="140" height="50" rx="8" fill="white" stroke="#93c5fd" stroke-width="1" filter="url(#shadow)"/>
+  <text x="415" y="186" fill="#1e40af" font-size="11" font-weight="600" text-anchor="middle">Material Service</text>
+  <text x="415" y="200" fill="#64748b" font-size="9" text-anchor="middle">Upload / Hash / Store</text>
+
+  <rect x="345" y="225" width="140" height="50" rx="8" fill="white" stroke="#93c5fd" stroke-width="1" filter="url(#shadow)"/>
+  <text x="415" y="246" fill="#1e40af" font-size="11" font-weight="600" text-anchor="middle">Audit Case Service</text>
+  <text x="415" y="260" fill="#64748b" font-size="9" text-anchor="middle">Create / Track Cases</text>
+
+  <!-- Arrow to Audit Engine -->
+  <line x1="485" y1="250" x2="530" y2="250" stroke="#64748b" stroke-width="2" marker-end="url(#arrowhead)"/>
+
+  <!-- ========== Layer 3: Audit Engine ========== -->
+  <rect x="535" y="80" width="340" height="330" rx="10" fill="url(#orangeGrad)" stroke="#fb923c" stroke-width="1.5" filter="url(#shadow)"/>
+  <rect x="535" y="80" width="340" height="36" rx="10" fill="#ea580c"/>
+  <rect x="535" y="100" width="340" height="16" fill="#ea580c"/>
+  <text x="705" y="103" fill="white" font-size="13" font-weight="700" text-anchor="middle">Audit Engine</text>
+
+  <!-- Triage Agent -->
+  <rect x="550" y="128" width="150" height="44" rx="6" fill="white" opacity="0.9" filter="url(#shadow)"/>
+  <text x="625" y="148" fill="#c2410c" font-size="11" font-weight="700" text-anchor="middle">Triage Agent</text>
+  <text x="625" y="162" fill="#9a3412" font-size="9" text-anchor="middle">Entity Extraction</text>
+
+  <!-- Tool Router -->
+  <rect x="710" y="128" width="150" height="44" rx="6" fill="white" opacity="0.9" filter="url(#shadow)"/>
+  <text x="785" y="148" fill="#c2410c" font-size="11" font-weight="700" text-anchor="middle">Tool Router</text>
+  <text x="785" y="162" fill="#9a3412" font-size="9" text-anchor="middle">Tool Plan Executor</text>
+
+  <!-- Arrow Agent -> Router -->
+  <line x1="700" y1="150" x2="710" y2="150" stroke="#9a3412" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+
+  <!-- Tool Chain Grid -->
+  <rect x="550" y="182" width="100" height="32" rx="5" fill="white" opacity="0.85"/>
+  <text x="600" y="202" fill="#9a3412" font-size="9" font-weight="600" text-anchor="middle">OCR Tool</text>
+
+  <rect x="660" y="182" width="100" height="32" rx="5" fill="white" opacity="0.85"/>
+  <text x="710" y="202" fill="#9a3412" font-size="9" font-weight="600" text-anchor="middle">QR Decode</text>
+
+  <rect x="770" y="182" width="90" height="32" rx="5" fill="white" opacity="0.85"/>
+  <text x="815" y="202" fill="#9a3412" font-size="9" font-weight="600" text-anchor="middle">URL Trace</text>
+
+  <rect x="550" y="222" width="100" height="32" rx="5" fill="white" opacity="0.85"/>
+  <text x="600" y="242" fill="#9a3412" font-size="9" font-weight="600" text-anchor="middle">Domain Rep.</text>
+
+  <rect x="660" y="222" width="100" height="32" rx="5" fill="white" opacity="0.85"/>
+  <text x="710" y="242" fill="#9a3412" font-size="9" font-weight="600" text-anchor="middle">Telegram Check</text>
+
+  <rect x="770" y="222" width="90" height="32" rx="5" fill="white" opacity="0.85"/>
+  <text x="815" y="242" fill="#9a3412" font-size="9" font-weight="600" text-anchor="middle">Contract Scan</text>
+
+  <!-- Evidence Store -->
+  <rect x="550" y="268" width="150" height="40" rx="6" fill="white" opacity="0.9" filter="url(#shadow)"/>
+  <text x="625" y="287" fill="#c2410c" font-size="11" font-weight="600" text-anchor="middle">Evidence Store</text>
+  <text x="625" y="300" fill="#9a3412" font-size="9" text-anchor="middle">PostgreSQL</text>
+
+  <!-- Policy Engine -->
+  <rect x="710" y="268" width="150" height="40" rx="6" fill="#fef3c7" stroke="#f59e0b" stroke-width="1" filter="url(#shadow)"/>
+  <text x="785" y="287" fill="#92400e" font-size="11" font-weight="700" text-anchor="middle">Policy Engine</text>
+  <text x="785" y="300" fill="#b45309" font-size="9" text-anchor="middle">Rules + Risk Score</text>
+
+  <!-- Decision -->
+  <rect x="550" y="320" width="310" height="40" rx="6" fill="white" opacity="0.9" filter="url(#shadow)"/>
+  <text x="705" y="337" fill="#c2410c" font-size="11" font-weight="600" text-anchor="middle">Decision Service</text>
+  <text x="705" y="352" fill="#9a3412" font-size="9" text-anchor="middle">PASS | REJECT | MANUAL_REVIEW</text>
+
+  <!-- Arrows within engine -->
+  <line x1="625" y1="172" x2="625" y2="182" stroke="#9a3412" stroke-width="1" marker-end="url(#arrowhead)"/>
+  <line x1="625" y1="254" x2="625" y2="268" stroke="#9a3412" stroke-width="1" marker-end="url(#arrowhead)"/>
+  <line x1="700" y1="288" x2="710" y2="288" stroke="#9a3412" stroke-width="1" marker-end="url(#arrowhead)"/>
+  <line x1="785" y1="308" x2="705" y2="320" stroke="#9a3412" stroke-width="1" marker-end="url(#arrowhead)"/>
+
+  <!-- ========== Layer 4: Attestation Service ========== -->
+  <rect x="910" y="80" width="260" height="180" rx="10" fill="url(#purpleGrad)" stroke="#c084fc" stroke-width="1.5" filter="url(#shadow)"/>
+  <rect x="910" y="80" width="260" height="36" rx="10" fill="#7c3aed"/>
+  <rect x="910" y="100" width="260" height="16" fill="#7c3aed"/>
+  <text x="1040" y="103" fill="white" font-size="13" font-weight="700" text-anchor="middle">Attestation Service</text>
+
+  <rect x="925" y="128" width="230" height="40" rx="6" fill="white" opacity="0.85" filter="url(#shadow)"/>
+  <text x="1040" y="147" fill="#6d28d9" font-size="11" font-weight="600" text-anchor="middle">On-chain Registry</text>
+  <text x="1040" y="161" fill="#7c3aed" font-size="9" text-anchor="middle">Base Sepolia / EVM</text>
+
+  <rect x="925" y="178" width="110" height="35" rx="6" fill="white" opacity="0.85"/>
+  <text x="980" y="200" fill="#6d28d9" font-size="10" font-weight="600" text-anchor="middle">Report CID</text>
+
+  <rect x="1045" y="178" width="110" height="35" rx="6" fill="white" opacity="0.85"/>
+  <text x="1100" y="200" fill="#6d28d9" font-size="10" font-weight="600" text-anchor="middle">Manifest Gen</text>
+
+  <!-- Arrow from Decision to Attestation -->
+  <line x1="860" y1="190" x2="910" y2="155" stroke="#64748b" stroke-width="2" marker-end="url(#arrowhead)"/>
+
+  <!-- ========== Layer 5: SDK & Publisher ========== -->
+  <rect x="535" y="440" width="635" height="150" rx="10" fill="#f0fdf4" stroke="#86efac" stroke-width="1.5" filter="url(#shadow)"/>
+  <rect x="535" y="440" width="635" height="36" rx="10" fill="#15803d"/>
+  <rect x="535" y="460" width="635" height="16" fill="#15803d"/>
+  <text x="852" y="463" fill="white" font-size="13" font-weight="700" text-anchor="middle">Ad Verification SDK (Publisher Side)</text>
+
+  <!-- SDK Flow -->
+  <rect x="555" y="488" width="110" height="44" rx="6" fill="white" stroke="#86efac" stroke-width="1" filter="url(#shadow)"/>
+  <text x="610" y="508" fill="#15803d" font-size="10" font-weight="600" text-anchor="middle">1. Fetch</text>
+  <text x="610" y="522" fill="#16a34a" font-size="9" text-anchor="middle">Manifest</text>
+
+  <rect x="680" y="488" width="110" height="44" rx="6" fill="white" stroke="#86efac" stroke-width="1" filter="url(#shadow)"/>
+  <text x="735" y="508" fill="#15803d" font-size="10" font-weight="600" text-anchor="middle">2. Load</text>
+  <text x="735" y="522" fill="#16a34a" font-size="9" text-anchor="middle">Creative Image</text>
+
+  <rect x="805" y="488" width="110" height="44" rx="6" fill="white" stroke="#86efac" stroke-width="1" filter="url(#shadow)"/>
+  <text x="860" y="508" fill="#15803d" font-size="10" font-weight="600" text-anchor="middle">3. Compute</text>
+  <text x="860" y="522" fill="#16a34a" font-size="9" text-anchor="middle">Hash + Verify</text>
+
+  <rect x="930" y="488" width="110" height="44" rx="6" fill="white" stroke="#86efac" stroke-width="1" filter="url(#shadow)"/>
+  <text x="985" y="508" fill="#15803d" font-size="10" font-weight="600" text-anchor="middle">4. Render</text>
+  <text x="985" y="522" fill="#16a34a" font-size="9" text-anchor="middle">Badge + Detail</text>
+
+  <rect x="1055" y="488" width="100" height="44" rx="6" fill="white" stroke="#86efac" stroke-width="1" filter="url(#shadow)"/>
+  <text x="1105" y="508" fill="#15803d" font-size="10" font-weight="600" text-anchor="middle">5. Report</text>
+  <text x="1105" y="522" fill="#16a34a" font-size="9" text-anchor="middle">Events</text>
+
+  <!-- Flow arrows in SDK -->
+  <line x1="665" y1="510" x2="680" y2="510" stroke="#16a34a" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+  <line x1="790" y1="510" x2="805" y2="510" stroke="#16a34a" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+  <line x1="915" y1="510" x2="930" y2="510" stroke="#16a34a" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+  <line x1="1040" y1="510" x2="1055" y2="510" stroke="#16a34a" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+
+  <!-- Badge Examples -->
+  <rect x="555" y="545" width="80" height="26" rx="13" fill="#22c55e"/>
+  <text x="595" y="562" fill="white" font-size="10" font-weight="600" text-anchor="middle">Verified</text>
+
+  <rect x="645" y="545" width="80" height="26" rx="13" fill="#eab308"/>
+  <text x="685" y="562" fill="white" font-size="10" font-weight="600" text-anchor="middle">Expired</text>
+
+  <rect x="735" y="545" width="80" height="26" rx="13" fill="#ef4444"/>
+  <text x="775" y="562" fill="white" font-size="10" font-weight="600" text-anchor="middle">Revoked</text>
+
+  <rect x="825" y="545" width="80" height="26" rx="13" fill="#6b7280"/>
+  <text x="865" y="562" fill="white" font-size="10" font-weight="600" text-anchor="middle">Unverified</text>
+
+  <!-- Arrow from Attestation to SDK (verification) -->
+  <line x1="1040" y1="260" x2="1040" y2="440" stroke="#7c3aed" stroke-width="2" stroke-dasharray="6,4" marker-end="url(#arrowhead)"/>
+  <text x="1055" y="360" fill="#7c3aed" font-size="9" transform="rotate(90, 1055, 360)">verify</text>
+
+  <!-- ========== Layer 6: Data Layer ========== -->
+  <rect x="30" y="340" width="260" height="250" rx="10" fill="#f1f5f9" stroke="#cbd5e1" stroke-width="1.5" filter="url(#shadow)"/>
+  <rect x="30" y="340" width="260" height="36" rx="10" fill="#475569"/>
+  <rect x="30" y="360" width="260" height="16" fill="#475569"/>
+  <text x="160" y="363" fill="white" font-size="13" font-weight="700" text-anchor="middle">Data Layer</text>
+
+  <rect x="45" y="388" width="230" height="28" rx="6" fill="white" filter="url(#shadow)"/>
+  <text x="160" y="407" fill="#334155" font-size="10" font-weight="600" text-anchor="middle">PostgreSQL (advertisers, creatives, ...)</text>
+
+  <rect x="45" y="423" width="230" height="28" rx="6" fill="white" filter="url(#shadow)"/>
+  <text x="160" y="442" fill="#334155" font-size="10" font-weight="600" text-anchor="middle">audit_cases + audit_evidences</text>
+
+  <rect x="45" y="458" width="230" height="28" rx="6" fill="white" filter="url(#shadow)"/>
+  <text x="160" y="477" fill="#334155" font-size="10" font-weight="600" text-anchor="middle">attestations + manifests</text>
+
+  <rect x="45" y="498" width="110" height="28" rx="6" fill="white" filter="url(#shadow)"/>
+  <text x="100" y="517" fill="#334155" font-size="10" font-weight="600" text-anchor="middle">S3 / R2</text>
+
+  <rect x="165" y="498" width="110" height="28" rx="6" fill="white" filter="url(#shadow)"/>
+  <text x="220" y="517" fill="#334155" font-size="10" font-weight="600" text-anchor="middle">Redis Queue</text>
+
+  <rect x="45" y="540" width="230" height="28" rx="6" fill="white" filter="url(#shadow)"/>
+  <text x="160" y="559" fill="#334155" font-size="10" font-weight="600" text-anchor="middle">On-chain (Base Sepolia)</text>
+
+  <!-- Arrow Data <-> Services -->
+  <line x1="290" y1="420" x2="345" y2="250" stroke="#94a3b8" stroke-width="1.5" stroke-dasharray="4,3"/>
+
+  <!-- ========== Manual Review Console ========== -->
+  <rect x="345" y="340" width="160" height="70" rx="8" fill="#fef3c7" stroke="#fbbf24" stroke-width="1" filter="url(#shadow)"/>
+  <text x="425" y="368" fill="#92400e" font-size="11" font-weight="700" text-anchor="middle">Manual Review</text>
+  <text x="425" y="384" fill="#b45309" font-size="9" text-anchor="middle">Ops Console</text>
+  <text x="425" y="398" fill="#b45309" font-size="9" text-anchor="middle">approve / reject / revoke</text>
+
+  <!-- Arrow Decision -> Manual Review -->
+  <line x1="705" y1="360" x2="705" y2="390" stroke="#64748b" stroke-width="1.5"/>
+  <line x1="705" y1="390" x2="505" y2="390" stroke="#64748b" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+
+  <!-- ========== Legend ========== -->
+  <rect x="30" y="620" width="1140" height="180" rx="10" fill="white" stroke="#e2e8f0" stroke-width="1" filter="url(#shadow)"/>
+  <text x="60" y="648" fill="#1e293b" font-size="14" font-weight="700">Tech Stack</text>
+
+  <rect x="60" y="663" width="12" height="12" rx="3" fill="#16a34a"/>
+  <text x="80" y="674" fill="#334155" font-size="11">Frontend: Next.js + Tailwind CSS</text>
+
+  <rect x="60" y="688" width="12" height="12" rx="3" fill="#2563eb"/>
+  <text x="80" y="699" fill="#334155" font-size="11">Backend: Next.js Route Handlers</text>
+
+  <rect x="60" y="713" width="12" height="12" rx="3" fill="#ea580c"/>
+  <text x="80" y="724" fill="#334155" font-size="11">Audit: Triage Agent + Tool Chain + Policy Engine</text>
+
+  <rect x="60" y="738" width="12" height="12" rx="3" fill="#7c3aed"/>
+  <text x="80" y="749" fill="#334155" font-size="11">Blockchain: Solidity + viem (Base Sepolia)</text>
+
+  <rect x="60" y="763" width="12" height="12" rx="3" fill="#475569"/>
+  <text x="80" y="774" fill="#334155" font-size="11">Data: PostgreSQL + Prisma + S3/R2 + Redis</text>
+
+  <!-- Key Flows -->
+  <text x="550" y="648" fill="#1e293b" font-size="14" font-weight="700">Key Flows</text>
+
+  <text x="550" y="674" fill="#334155" font-size="11" font-weight="600">A. Submit Audit:</text>
+  <text x="660" y="674" fill="#64748b" font-size="11">Console -> API -> Triage -> Tools -> Policy -> Decision</text>
+
+  <text x="550" y="699" fill="#334155" font-size="11" font-weight="600">B. Issue Certificate:</text>
+  <text x="686" y="699" fill="#64748b" font-size="11">PASS -> Attestation Service -> On-chain -> Manifest</text>
+
+  <text x="550" y="724" fill="#334155" font-size="11" font-weight="600">C. Verify Ad:</text>
+  <text x="640" y="724" fill="#64748b" font-size="11">SDK -> Manifest -> Hash Check -> API/On-chain -> Badge</text>
+
+  <text x="550" y="749" fill="#334155" font-size="11" font-weight="600">D. Manual Review:</text>
+  <text x="672" y="749" fill="#64748b" font-size="11">MANUAL_REVIEW -> Ops Console -> approve/reject</text>
+
+  <text x="550" y="774" fill="#334155" font-size="11" font-weight="600">E. Resubmit:</text>
+  <text x="636" y="774" fill="#64748b" font-size="11">Edit Creative -> New Version -> Submit Audit Again</text>
+</svg>

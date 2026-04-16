@@ -1,0 +1,46 @@
+# Environment & Secrets
+.env
+.env.local
+.env.*.local
+.env.production
+.env.development
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Logs
+*.log
+*.log.*
+
+# Node.js
+node_modules/
+.next/
+.turbo/
+dist/
+build/
+*.tsbuildinfo
+next-env.d.ts
+
+# Go
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+__debug_bin*
+
+# Uploads (user-generated content)
+uploads/
+
+# Temporary
+tmp/
+temp/
+*.tmp

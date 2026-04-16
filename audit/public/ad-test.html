@@ -1,0 +1,608 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AgentAd Slot - Publisher Test Page</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #f1f5f9;
+      color: #334155;
+    }
+
+    /* ---- Page Layout (fake publisher site) ---- */
+    .site-header {
+      background: #1e293b;
+      color: white;
+      padding: 16px 32px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .site-header h1 { font-size: 18px; font-weight: 700; }
+    .site-header nav a { color: #94a3b8; text-decoration: none; font-size: 14px; margin-left: 24px; }
+    .site-header nav a:hover { color: white; }
+
+    .page-body {
+      max-width: 1100px;
+      margin: 32px auto;
+      display: grid;
+      grid-template-columns: 1fr 300px;
+      gap: 24px;
+      padding: 0 24px;
+    }
+
+    .content-area {
+      background: white;
+      border-radius: 12px;
+      padding: 32px;
+      border: 1px solid #e2e8f0;
+    }
+    .content-area h2 { font-size: 22px; font-weight: 700; margin-bottom: 12px; }
+    .content-area p { color: #64748b; font-size: 14px; line-height: 1.8; margin-bottom: 16px; }
+
+    .sidebar { display: flex; flex-direction: column; gap: 20px; }
+
+    /* ---- Ad Slot ---- */
+    .ad-slot-wrapper {
+      background: white;
+      border-radius: 12px;
+      border: 1px solid #e2e8f0;
+      overflow: hidden;
+    }
+    .ad-slot-label {
+      padding: 8px 12px;
+      background: #f8fafc;
+      border-bottom: 1px solid #e2e8f0;
+      font-size: 10px;
+      color: #94a3b8;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .ad-slot-container {
+      position: relative;
+      min-height: 250px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: #f8fafc;
+    }
+
+    /* ---- Ad Creative ---- */
+    .ad-creative {
+      width: 100%;
+      display: block;
+      cursor: pointer;
+    }
+    .ad-creative img {
+      width: 100%;
+      display: block;
+    }
+
+    /* ---- Verification Badge ---- */
+    .ad-badge {
+      position: absolute;
+      top: 8px;
+      right: 8px;
+      padding: 4px 10px;
+      border-radius: 12px;
+      font-size: 11px;
+      font-weight: 600;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      backdrop-filter: blur(8px);
+      transition: transform 0.15s;
+      z-index: 10;
+    }
+    .ad-badge:hover { transform: scale(1.05); }
+    .ad-badge.verified { background: rgba(34,197,94,0.9); color: white; }
+    .ad-badge.pending { background: rgba(234,179,8,0.85); color: white; }
+    .ad-badge.error { background: rgba(107,114,128,0.8); color: white; }
+
+    /* ---- Loading States ---- */
+    .ad-loading {
+      text-align: center;
+      padding: 40px 20px;
+      color: #94a3b8;
+    }
+    .ad-loading .spinner {
+      width: 28px;
+      height: 28px;
+      border: 3px solid #e2e8f0;
+      border-top-color: #3b82f6;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+      margin: 0 auto 12px;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ---- Auction Log Panel ---- */
+    .auction-log {
+      background: white;
+      border-radius: 12px;
+      border: 1px solid #e2e8f0;
+      overflow: hidden;
+    }
+    .auction-log-header {
+      padding: 12px 16px;
+      background: #1e293b;
+      color: white;
+      font-size: 12px;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .auction-log-body {
+      padding: 12px;
+      max-height: 400px;
+      overflow-y: auto;
+      font-size: 12px;
+    }
+    .log-entry {
+      padding: 8px 10px;
+      margin-bottom: 6px;
+      border-radius: 6px;
+      border-left: 3px solid #e2e8f0;
+    }
+    .log-entry.info { border-left-color: #3b82f6; background: #eff6ff; }
+    .log-entry.success { border-left-color: #22c55e; background: #f0fdf4; }
+    .log-entry.bid { border-left-color: #8b5cf6; background: #f5f3ff; }
+    .log-entry.winner { border-left-color: #f59e0b; background: #fffbeb; }
+    .log-entry .label { font-weight: 600; color: #334155; }
+    .log-entry .detail { color: #64748b; margin-top: 2px; }
+
+    /* ---- Bid Cards ---- */
+    .bid-card {
+      padding: 10px 12px;
+      margin-bottom: 8px;
+      border-radius: 8px;
+      border: 1px solid #e2e8f0;
+    }
+    .bid-card.winner { border-color: #22c55e; background: #f0fdf4; }
+    .bid-card .agent-name { font-weight: 600; font-size: 13px; }
+    .bid-card .bid-amount { font-weight: 700; font-size: 16px; color: #1e293b; }
+    .bid-card .bid-meta { font-size: 11px; color: #64748b; margin-top: 4px; }
+    .bid-card .bid-reason { font-size: 11px; color: #475569; margin-top: 6px; padding-top: 6px; border-top: 1px solid #e2e8f0; }
+
+    /* ---- Controls ---- */
+    .controls {
+      background: white;
+      border-radius: 12px;
+      border: 1px solid #e2e8f0;
+      padding: 16px;
+    }
+    .controls h3 { font-size: 13px; font-weight: 600; margin-bottom: 12px; color: #1e293b; }
+    .controls label { display: block; font-size: 11px; color: #64748b; margin-bottom: 4px; font-weight: 500; }
+    .controls select, .controls input {
+      width: 100%;
+      padding: 6px 10px;
+      border: 1px solid #e2e8f0;
+      border-radius: 6px;
+      font-size: 12px;
+      margin-bottom: 10px;
+    }
+    .controls button {
+      width: 100%;
+      padding: 10px;
+      background: #3b82f6;
+      color: white;
+      border: none;
+      border-radius: 8px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .controls button:hover { background: #2563eb; }
+    .controls button:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    .powered-by {
+      text-align: center;
+      font-size: 11px;
+      color: #94a3b8;
+      padding: 24px;
+    }
+    .powered-by a { color: #3b82f6; text-decoration: none; }
+  </style>
+</head>
+<body>
+  <!-- Simulated Publisher Website -->
+  <div class="site-header">
+    <h1>CryptoNews Daily</h1>
+    <nav>
+      <a href="#">Markets</a>
+      <a href="#">DeFi</a>
+      <a href="#">NFTs</a>
+      <a href="#">Learn</a>
+    </nav>
+  </div>
+
+  <div class="page-body">
+    <!-- Main Content (fake article) -->
+    <div class="content-area">
+      <h2>DeFi TVL Surges 23% as New Protocols Launch on Base</h2>
+      <p>The total value locked across DeFi protocols has seen a significant increase this quarter, driven by the launch of several new protocols on Base network. Analysts attribute the growth to improved user experience and lower transaction costs.</p>
+      <p>Leading the charge are several innovative lending and yield farming protocols that have attracted both retail and institutional capital. The trend suggests a renewed interest in on-chain financial products.</p>
+      <p>"We're seeing a new wave of DeFi adoption that's fundamentally different from 2021," said one industry analyst. "The infrastructure is more mature, the user experience is better, and the yields are more sustainable."</p>
+      <p>Market observers note that the growth in TVL has been accompanied by an increase in unique active wallets, suggesting genuine user adoption rather than capital recycling.</p>
+    </div>
+
+    <!-- Sidebar -->
+    <div class="sidebar">
+      <!-- Ad Slot -->
+      <div class="ad-slot-wrapper">
+        <div class="ad-slot-label">
+          <span>Sponsored</span>
+          <span id="ad-status-indicator" style="width:6px;height:6px;border-radius:50%;background:#94a3b8;"></span>
+        </div>
+        <div class="ad-slot-container" id="ad-slot">
+          <div class="ad-loading" id="ad-loading">
+            <div class="spinner"></div>
+            <div>Loading ad...</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Auction Log -->
+      <div class="auction-log">
+        <div class="auction-log-header">
+          <span>Auction Log</span>
+          <span id="auction-timer" style="font-weight:400;opacity:0.7;">--</span>
+        </div>
+        <div class="auction-log-body" id="auction-log"></div>
+      </div>
+
+      <!-- Controls -->
+      <div class="controls">
+        <h3>Ad Slot Configuration</h3>
+
+        <label>Slot Type</label>
+        <select id="ctrl-slot-type">
+          <option value="desktop-rectangle" selected>Desktop Rectangle (300x250)</option>
+          <option value="mobile-banner">Mobile Banner (320x50)</option>
+          <option value="desktop-leaderboard">Desktop Leaderboard (728x90)</option>
+          <option value="native-feed">Native Feed (600x400)</option>
+        </select>
+
+        <label>Site Category</label>
+        <select id="ctrl-category">
+          <option value="defi">DeFi</option>
+          <option value="nft">NFT</option>
+          <option value="news" selected>News</option>
+          <option value="gaming">Gaming</option>
+          <option value="exchange">Exchange</option>
+        </select>
+
+        <label>User Segments (comma-separated)</label>
+        <input id="ctrl-segments" type="text" value="wallet-user, defi-trader" placeholder="wallet-user, nft-collector" />
+
+        <label>Floor CPM ($)</label>
+        <input id="ctrl-floor" type="number" value="5" step="0.5" min="0" />
+
+        <button id="btn-request" onclick="requestAd()">Request New Ad</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="powered-by">
+    Verified by <a href="http://localhost:3000" target="_blank">AgentAd Audit Platform</a>
+  </div>
+
+  <script>
+    const API_BASE = 'http://localhost:8080';
+    let currentAuctionId = null;
+    let pollTimer = null;
+    let startTime = null;
+
+    function log(type, label, detail) {
+      const el = document.getElementById('auction-log');
+      const entry = document.createElement('div');
+      entry.className = `log-entry ${type}`;
+      entry.innerHTML = `<div class="label">${label}</div>${detail ? `<div class="detail">${detail}</div>` : ''}`;
+      el.appendChild(entry);
+      el.scrollTop = el.scrollHeight;
+    }
+
+    function clearLog() {
+      document.getElementById('auction-log').innerHTML = '';
+    }
+
+    function setIndicator(color) {
+      document.getElementById('ad-status-indicator').style.background = color;
+    }
+
+    function updateTimer() {
+      if (!startTime) return;
+      const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+      document.getElementById('auction-timer').textContent = elapsed + 's';
+    }
+
+    const SIZES = {
+      'desktop-rectangle': '300x250',
+      'mobile-banner': '320x50',
+      'desktop-leaderboard': '728x90',
+      'native-feed': '600x400',
+    };
+
+    async function requestAd() {
+      // Reset
+      clearLog();
+      if (pollTimer) clearInterval(pollTimer);
+      const slot = document.getElementById('ad-slot');
+      slot.innerHTML = `<div class="ad-loading" id="ad-loading"><div class="spinner"></div><div>Requesting ad auction...</div></div>`;
+      setIndicator('#eab308');
+
+      const slotType = document.getElementById('ctrl-slot-type').value;
+      const category = document.getElementById('ctrl-category').value;
+      const segments = document.getElementById('ctrl-segments').value.split(',').map(s => s.trim()).filter(Boolean);
+      const floor = parseFloat(document.getElementById('ctrl-floor').value) || 0;
+      const size = SIZES[slotType] || '300x250';
+
+      const body = {
+        slotId: 'test_publisher_slot',
+        slotType,
+        size,
+        floorCpm: floor,
+        siteCategory: category,
+        userSegments: segments,
+        siteDomain: location.hostname,
+      };
+
+      log('info', 'Bid Request Sent', `${slotType} (${size}) | floor: $${floor} CPM | category: ${category}`);
+      log('info', 'User Segments', segments.join(', '));
+
+      startTime = Date.now();
+      const timerInterval = setInterval(updateTimer, 100);
+
+      document.getElementById('btn-request').disabled = true;
+
+      try {
+        const res = await fetch(`${API_BASE}/api/ad-slot/request`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        });
+        const data = await res.json();
+
+        if (!res.ok) {
+          log('info', 'Error', data.error || 'Request failed');
+          setIndicator('#ef4444');
+          document.getElementById('btn-request').disabled = false;
+          clearInterval(timerInterval);
+          return;
+        }
+
+        currentAuctionId = data.auctionId;
+        log('info', 'Auction Created', `ID: ${currentAuctionId.substring(0, 12)}...`);
+
+        // Poll for result
+        document.getElementById('ad-loading').querySelector('div:last-child').textContent = 'Bidder agents are competing...';
+
+        pollTimer = setInterval(async () => {
+          try {
+            const pollRes = await fetch(`${API_BASE}/api/ad-slot/result/${currentAuctionId}`);
+            const result = await pollRes.json();
+
+            if (result.status === 'PENDING') {
+              if (result.bidsCount > 0) {
+                document.getElementById('ad-loading').querySelector('div:last-child').textContent =
+                  `${result.bidsCount} bid(s) received, settling auction...`;
+              }
+              return;
+            }
+
+            // Auction completed!
+            clearInterval(pollTimer);
+            clearInterval(timerInterval);
+            updateTimer();
+            document.getElementById('btn-request').disabled = false;
+
+            renderResult(result);
+          } catch (e) {
+            console.error('Poll error:', e);
+          }
+        }, 1500);
+
+        // Timeout after 3 min
+        setTimeout(() => {
+          clearInterval(pollTimer);
+          clearInterval(timerInterval);
+          document.getElementById('btn-request').disabled = false;
+          if (slot.querySelector('.ad-loading')) {
+            slot.innerHTML = '<div class="ad-loading">Auction timed out. Try again.</div>';
+            setIndicator('#ef4444');
+          }
+        }, 180000);
+
+      } catch (e) {
+        log('info', 'Network Error', e.message);
+        setIndicator('#ef4444');
+        document.getElementById('btn-request').disabled = false;
+        clearInterval(timerInterval);
+      }
+    }
+
+    function renderResult(result) {
+      const slot = document.getElementById('ad-slot');
+
+      // Log bids
+      if (result.bids && result.bids.length > 0) {
+        log('info', `${result.bids.length} Agent(s) Responded`, '');
+
+        result.bids.forEach(bid => {
+          const type = bid.isWinner ? 'winner' : 'bid';
+          const winTag = bid.isWinner ? ' [WINNER]' : '';
+          log(type,
+            `${bid.agentName}${winTag}`,
+            bid.bidCpm != null
+              ? `Bid: $${bid.bidCpm.toFixed(2)} CPM | pCTR: ${(bid.predictedCtr * 100).toFixed(2)}% | Creative: ${bid.creativeName}`
+              : 'Did not participate'
+          );
+        });
+      } else {
+        log('info', 'No Bids', 'No agents participated in this auction');
+        slot.innerHTML = '<div class="ad-loading">No ads available for this slot.</div>';
+        setIndicator('#94a3b8');
+        return;
+      }
+
+      // Log settlement
+      if (result.settlementPrice != null) {
+        log('success', 'Auction Settled', `Settlement: $${result.settlementPrice.toFixed(2)} CPM`);
+      }
+
+      // Render winning creative
+      if (result.creative) {
+        const c = result.creative;
+        const clickUrl = c.clickUrl || c.landingUrl;
+        const imageUrl = c.imageUrl ? `${API_BASE}${c.imageUrl}` : null;
+
+        slot.innerHTML = '';
+
+        if (imageUrl) {
+          const link = document.createElement('a');
+          link.href = clickUrl;
+          link.target = '_blank';
+          link.rel = 'noopener noreferrer';
+          link.className = 'ad-creative';
+
+          // Track real user click back to backend
+          const auctionIdForClick = currentAuctionId;
+          link.addEventListener('click', () => {
+            if (!auctionIdForClick) return;
+            try {
+              const blob = new Blob([], { type: 'application/json' });
+              if (navigator.sendBeacon) {
+                navigator.sendBeacon(`${API_BASE}/api/ad-slot/click/${auctionIdForClick}`, blob);
+              } else {
+                fetch(`${API_BASE}/api/ad-slot/click/${auctionIdForClick}`, {
+                  method: 'POST',
+                  keepalive: true,
+                });
+              }
+              log('success', 'Click Tracked', `Auction ${auctionIdForClick.substring(0, 12)}... marked as clicked`);
+            } catch (err) {
+              console.error('Click tracking failed:', err);
+            }
+          });
+
+          const img = document.createElement('img');
+          img.src = imageUrl;
+          img.alt = c.creativeName;
+          link.appendChild(img);
+          slot.appendChild(link);
+
+          // Add verification badge
+          const badge = document.createElement('div');
+          badge.className = 'ad-badge verified';
+          badge.innerHTML = '&#10003; Verified';
+          badge.title = `AgentAd Verified | ${c.projectName}`;
+          badge.onclick = (e) => {
+            e.stopPropagation();
+            e.preventDefault();
+            showVerificationDetail(c, result);
+          };
+          slot.appendChild(badge);
+
+          setIndicator('#22c55e');
+          log('success', 'Ad Rendered', `${c.creativeName} (${c.projectName})`);
+        }
+      } else {
+        slot.innerHTML = '<div class="ad-loading">Auction completed but no creative available.</div>';
+        setIndicator('#94a3b8');
+      }
+    }
+
+    function showVerificationDetail(creative, result) {
+      // Remove existing panel
+      const existing = document.getElementById('zkdsp-verify-panel');
+      if (existing) { existing.remove(); return; }
+
+      const panel = document.createElement('div');
+      panel.id = 'zkdsp-verify-panel';
+      panel.style.cssText = `
+        position: fixed; top: 0; right: 0; bottom: 0; width: 380px;
+        background: white; box-shadow: -4px 0 24px rgba(0,0,0,0.15);
+        z-index: 10000; padding: 24px; overflow-y: auto;
+        font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+      `;
+
+      const winnerBid = result.bids?.find(b => b.isWinner);
+
+      panel.innerHTML = `
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;">
+          <h3 style="font-size:16px;font-weight:700;margin:0;">Ad Verification</h3>
+          <button onclick="document.getElementById('zkdsp-verify-panel').remove()" style="border:none;background:none;font-size:20px;cursor:pointer;">&#10005;</button>
+        </div>
+
+        <div style="padding:12px;background:#f0fdf4;border-radius:8px;margin-bottom:12px;border:1px solid #bbf7d0;">
+          <div style="display:flex;align-items:center;gap:6px;font-weight:700;color:#16a34a;">
+            <span>&#10003;</span> Verified by AgentAd
+          </div>
+        </div>
+
+        <div style="padding:12px;background:#f8fafc;border-radius:8px;margin-bottom:12px;">
+          <div style="font-size:11px;color:#94a3b8;">Project</div>
+          <div style="font-weight:600;font-size:14px;">${creative.projectName}</div>
+        </div>
+
+        <div style="padding:12px;background:#f8fafc;border-radius:8px;margin-bottom:12px;">
+          <div style="font-size:11px;color:#94a3b8;">Creative</div>
+          <div style="font-weight:600;">${creative.creativeName}</div>
+        </div>
+
+        <div style="padding:12px;background:#f8fafc;border-radius:8px;margin-bottom:12px;">
+          <div style="font-size:11px;color:#94a3b8;">Landing Page</div>
+          <div style="font-size:12px;word-break:break-all;">${creative.landingUrl}</div>
+        </div>
+
+        ${winnerBid ? `
+        <div style="padding:12px;background:#f5f3ff;border-radius:8px;margin-bottom:12px;border:1px solid #ddd6fe;">
+          <div style="font-size:11px;color:#94a3b8;">Winning Bid</div>
+          <div style="font-weight:700;font-size:18px;color:#1e293b;">$${winnerBid.bidCpm?.toFixed(2)} CPM</div>
+          <div style="font-size:11px;color:#64748b;margin-top:4px;">
+            by ${winnerBid.agentName} | pCTR: ${(winnerBid.predictedCtr * 100).toFixed(2)}%
+          </div>
+        </div>
+
+        <div style="padding:12px;background:#f8fafc;border-radius:8px;margin-bottom:12px;">
+          <div style="font-size:11px;color:#94a3b8;">Agent Reasoning</div>
+          <div style="font-size:12px;color:#334155;margin-top:4px;line-height:1.6;">${winnerBid.reason || '-'}</div>
+        </div>
+        ` : ''}
+
+        ${result.settlementPrice != null ? `
+        <div style="padding:12px;background:#fffbeb;border-radius:8px;margin-bottom:12px;border:1px solid #fde68a;">
+          <div style="font-size:11px;color:#94a3b8;">Settlement Price</div>
+          <div style="font-weight:700;font-size:16px;color:#92400e;">$${result.settlementPrice.toFixed(2)} CPM</div>
+        </div>
+        ` : ''}
+
+        <div style="margin-top:16px;text-align:center;">
+          <a href="http://localhost:3000" target="_blank" style="font-size:11px;color:#3b82f6;text-decoration:none;">
+            View on AgentAd Platform &rarr;
+          </a>
+        </div>
+
+        <div style="margin-top:16px;text-align:center;font-size:10px;color:#94a3b8;">
+          Powered by AgentAd Audit &amp; Bidding Platform
+        </div>
+      `;
+
+      document.body.appendChild(panel);
+    }
+
+    // Auto-request on page load
+    window.addEventListener('load', () => {
+      setTimeout(requestAd, 500);
+    });
+  </script>
+</body>
+</html>
