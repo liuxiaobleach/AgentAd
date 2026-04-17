@@ -52,6 +52,115 @@ type Advertiser struct {
 	CreatedAt     time.Time `json:"createdAt"`
 }
 
+type BalanceLedgerEntryType string
+
+const (
+	BalanceLedgerEntryTopUp      BalanceLedgerEntryType = "TOPUP"
+	BalanceLedgerEntryCapture    BalanceLedgerEntryType = "CAPTURE"
+	BalanceLedgerEntryAdjustment BalanceLedgerEntryType = "ADJUSTMENT"
+)
+
+type SpendReservationStatus string
+
+const (
+	SpendReservationStatusAuthorized SpendReservationStatus = "AUTHORIZED"
+	SpendReservationStatusInProgress SpendReservationStatus = "IN_PROGRESS"
+	SpendReservationStatusSettled    SpendReservationStatus = "SETTLED"
+	SpendReservationStatusReleased   SpendReservationStatus = "RELEASED"
+	SpendReservationStatusFailed     SpendReservationStatus = "FAILED"
+)
+
+type OutboundPaymentEventStatus string
+
+const (
+	OutboundPaymentEventStatusSettled OutboundPaymentEventStatus = "SETTLED"
+)
+
+type AdvertiserBalance struct {
+	AdvertiserID   string    `json:"advertiserId"`
+	Currency       string    `json:"currency"`
+	TotalAtomic    int64     `json:"totalAtomic"`
+	ReservedAtomic int64     `json:"reservedAtomic"`
+	CreatedAt      time.Time `json:"createdAt"`
+	UpdatedAt      time.Time `json:"updatedAt"`
+}
+
+type BalanceSummary struct {
+	AdvertiserID    string    `json:"advertiserId"`
+	Currency        string    `json:"currency"`
+	TotalAtomic     int64     `json:"totalAtomic"`
+	ReservedAtomic  int64     `json:"reservedAtomic"`
+	SpendableAtomic int64     `json:"spendableAtomic"`
+	UpdatedAt       time.Time `json:"updatedAt"`
+}
+
+type BalanceLedgerEntry struct {
+	ID            string                 `json:"id"`
+	AdvertiserID  string                 `json:"advertiserId"`
+	EntryType     BalanceLedgerEntryType `json:"entryType"`
+	AmountAtomic  int64                  `json:"amountAtomic"`
+	Description   string                 `json:"description"`
+	ReservationID *string                `json:"reservationId"`
+	Metadata      json.RawMessage        `json:"metadata"`
+	CreatedAt     time.Time              `json:"createdAt"`
+}
+
+type SpendReservation struct {
+	ID                     string                 `json:"id"`
+	AdvertiserID           string                 `json:"advertiserId"`
+	OperationType          string                 `json:"operationType"`
+	OperationRef           *string                `json:"operationRef"`
+	Status                 SpendReservationStatus `json:"status"`
+	Currency               string                 `json:"currency"`
+	BaseFeeAtomic          int64                  `json:"baseFeeAtomic"`
+	MaxExternalSpendAtomic int64                  `json:"maxExternalSpendAtomic"`
+	ReservedAtomic         int64                  `json:"reservedAtomic"`
+	ExternalSpendAtomic    int64                  `json:"externalSpendAtomic"`
+	CapturedAtomic         int64                  `json:"capturedAtomic"`
+	ReleasedAtomic         int64                  `json:"releasedAtomic"`
+	Metadata               json.RawMessage        `json:"metadata"`
+	CreatedAt              time.Time              `json:"createdAt"`
+	UpdatedAt              time.Time              `json:"updatedAt"`
+	FinalizedAt            *time.Time             `json:"finalizedAt"`
+}
+
+type OutboundPaymentEvent struct {
+	ID              string                     `json:"id"`
+	AdvertiserID    string                     `json:"advertiserId"`
+	ReservationID   string                     `json:"reservationId"`
+	Provider        string                     `json:"provider"`
+	RequestURL      string                     `json:"requestUrl"`
+	Network         *string                    `json:"network"`
+	Asset           *string                    `json:"asset"`
+	AmountAtomic    int64                      `json:"amountAtomic"`
+	Payer           *string                    `json:"payer"`
+	TransactionHash *string                    `json:"transactionHash"`
+	Status          OutboundPaymentEventStatus `json:"status"`
+	ResponseJSON    json.RawMessage            `json:"responseJson"`
+	CreatedAt       time.Time                  `json:"createdAt"`
+}
+
+type OnchainDeposit struct {
+	ID              string          `json:"id"`
+	AdvertiserID    string          `json:"advertiserId"`
+	WalletAddress   string          `json:"walletAddress"`
+	TreasuryAddress string          `json:"treasuryAddress"`
+	TokenAddress    string          `json:"tokenAddress"`
+	Network         string          `json:"network"`
+	TxHash          string          `json:"txHash"`
+	BlockNumber     int64           `json:"blockNumber"`
+	AmountAtomic    int64           `json:"amountAtomic"`
+	Metadata        json.RawMessage `json:"metadata"`
+	CreatedAt       time.Time       `json:"createdAt"`
+	CreditedAt      time.Time       `json:"creditedAt"`
+}
+
+type ChainSyncCursor struct {
+	SyncName         string    `json:"syncName"`
+	LastScannedBlock int64     `json:"lastScannedBlock"`
+	UpdatedAt        time.Time `json:"updatedAt"`
+}
+
 // DSP new types
 
 type BidderAgentStatus string
@@ -63,20 +172,20 @@ const (
 )
 
 type CreativeProfile struct {
-	ID                string          `json:"id"`
-	CreativeID        string          `json:"creativeId"`
-	AuditCaseID       *string         `json:"auditCaseId"`
-	AnalysisVersion   int             `json:"analysisVersion"`
-	MarketingSummary  *string         `json:"marketingSummary"`
-	VisualTags        []string        `json:"visualTags"`
-	CtaType           *string         `json:"ctaType"`
-	CopyStyle         *string         `json:"copyStyle"`
-	TargetAudiences   []string        `json:"targetAudiences"`
-	PlacementFit      json.RawMessage `json:"placementFit"`
+	ID                 string          `json:"id"`
+	CreativeID         string          `json:"creativeId"`
+	AuditCaseID        *string         `json:"auditCaseId"`
+	AnalysisVersion    int             `json:"analysisVersion"`
+	MarketingSummary   *string         `json:"marketingSummary"`
+	VisualTags         []string        `json:"visualTags"`
+	CtaType            *string         `json:"ctaType"`
+	CopyStyle          *string         `json:"copyStyle"`
+	TargetAudiences    []string        `json:"targetAudiences"`
+	PlacementFit       json.RawMessage `json:"placementFit"`
 	PredictedCtrPriors json.RawMessage `json:"predictedCtrPriors"`
-	BidHints          json.RawMessage `json:"bidHints"`
-	CreatedAt         time.Time       `json:"createdAt"`
-	UpdatedAt         time.Time       `json:"updatedAt"`
+	BidHints           json.RawMessage `json:"bidHints"`
+	CreatedAt          time.Time       `json:"createdAt"`
+	UpdatedAt          time.Time       `json:"updatedAt"`
 }
 
 type BidderAgent struct {
@@ -104,20 +213,20 @@ type AuctionRequest struct {
 	CreatedAt    time.Time       `json:"createdAt"`
 
 	// Joined
-	Bids   []AuctionBid    `json:"bids,omitempty"`
-	Result *AuctionResult  `json:"result,omitempty"`
+	Bids   []AuctionBid   `json:"bids,omitempty"`
+	Result *AuctionResult `json:"result,omitempty"`
 }
 
 type AuctionBid struct {
-	ID                string   `json:"id"`
-	AuctionRequestID  string   `json:"auctionRequestId"`
-	BidderAgentID     string   `json:"bidderAgentId"`
-	SelectedCreativeID *string `json:"selectedCreativeId"`
-	PredictedCtr      *float64 `json:"predictedCtr"`
-	BidCpm            *float64 `json:"bidCpm"`
-	Confidence        *float64 `json:"confidence"`
-	Reason            *string  `json:"reason"`
-	CreatedAt         time.Time `json:"createdAt"`
+	ID                 string    `json:"id"`
+	AuctionRequestID   string    `json:"auctionRequestId"`
+	BidderAgentID      string    `json:"bidderAgentId"`
+	SelectedCreativeID *string   `json:"selectedCreativeId"`
+	PredictedCtr       *float64  `json:"predictedCtr"`
+	BidCpm             *float64  `json:"bidCpm"`
+	Confidence         *float64  `json:"confidence"`
+	Reason             *string   `json:"reason"`
+	CreatedAt          time.Time `json:"createdAt"`
 
 	// Joined
 	AgentName    string `json:"agentName,omitempty"`
@@ -125,13 +234,13 @@ type AuctionBid struct {
 }
 
 type AuctionResult struct {
-	ID                string   `json:"id"`
-	AuctionRequestID  string   `json:"auctionRequestId"`
-	WinnerBidID       *string  `json:"winnerBidId"`
-	SettlementPrice   *float64 `json:"settlementPrice"`
-	ShownCreativeID   *string  `json:"shownCreativeId"`
-	Clicked           bool     `json:"clicked"`
-	CreatedAt         time.Time `json:"createdAt"`
+	ID               string    `json:"id"`
+	AuctionRequestID string    `json:"auctionRequestId"`
+	WinnerBidID      *string   `json:"winnerBidId"`
+	SettlementPrice  *float64  `json:"settlementPrice"`
+	ShownCreativeID  *string   `json:"shownCreativeId"`
+	Clicked          bool      `json:"clicked"`
+	CreatedAt        time.Time `json:"createdAt"`
 }
 
 type Creative struct {

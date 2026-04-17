@@ -3,6 +3,7 @@ package handler
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
@@ -20,11 +21,21 @@ import (
 // SubmitAudit creates the audit case, returns immediately, and runs the
 // Claude agentic loop in a background goroutine.
 func (h *Handler) SubmitAudit(w http.ResponseWriter, r *http.Request) {
+	claims := GetClaims(r.Context())
+	if claims == nil {
+		writeError(w, 401, "Not authenticated")
+		return
+	}
+
 	id := chi.URLParam(r, "id")
 
 	creative, err := h.Queries.GetCreativeRaw(r.Context(), id)
 	if err != nil {
 		writeError(w, 404, "Creative not found")
+		return
+	}
+	if creative.AdvertiserID != claims.AdvertiserID {
+		writeError(w, 403, "Creative does not belong to your account")
 		return
 	}
 
@@ -41,16 +52,42 @@ func (h *Handler) SubmitAudit(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	reservation, err := h.reserveSpend(
+		r.Context(),
+		claims.AdvertiserID,
+		"creative_audit",
+		nil,
+		h.Config.AuditBaseFeeAtomic,
+		h.Config.AuditExternalCapAtomic,
+		map[string]interface{}{
+			"creativeId":   creative.ID,
+			"creativeName": creative.CreativeName,
+			"projectName":  creative.ProjectName,
+		},
+	)
+	if err != nil {
+		if errors.Is(err, db.ErrInsufficientBalance) {
+			h.writeInsufficientBalance(w, r.Context(), claims.AdvertiserID, h.Config.AuditBaseFeeAtomic+h.Config.AuditExternalCapAtomic)
+			return
+		}
+		writeError(w, 500, "Failed to reserve audit budget: "+err.Error())
+		return
+	}
+
 	// Create audit case (TRIAGING status)
 	auditCase, err := h.Queries.CreateAuditCase(r.Context(), creative.ID)
 	if err != nil {
+		h.settleReservation(context.Background(), reservation.ID, false, db.SpendReservationStatusReleased)
 		writeError(w, 500, "Failed to create audit case: "+err.Error())
 		return
+	}
+	if err := h.Queries.UpdateSpendReservationOperationRef(r.Context(), reservation.ID, auditCase.ID); err != nil {
+		log.Printf("[audit] case=%s failed to attach reservation=%s: %v", auditCase.ID, reservation.ID, err)
 	}
 	_ = h.Queries.UpdateCreativeStatus(r.Context(), creative.ID, db.CreativeStatusAuditing)
 
 	// Kick off background audit
-	go h.runAuditInBackground(auditCase.ID, creative, imageData)
+	go h.runAuditInBackground(auditCase.ID, claims.AdvertiserID, reservation.ID, creative, imageData)
 
 	// Return immediately so the client doesn't block
 	writeJSON(w, 202, map[string]interface{}{
@@ -60,16 +97,24 @@ func (h *Handler) SubmitAudit(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func (h *Handler) runAuditInBackground(auditCaseID string, creative db.Creative, imageData []byte) {
+func (h *Handler) runAuditInBackground(auditCaseID, advertiserID, reservationID string, creative db.Creative, imageData []byte) {
 	// Use a fresh background context so the HTTP request cancellation doesn't kill it
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer cancel()
 
 	log.Printf("[audit] case=%s start (creative=%s)", auditCaseID, creative.ID)
 
+	session, err := h.Payments.NewSession(advertiserID, reservationID, h.Config.AuditExternalCapAtomic)
+	if err != nil {
+		log.Printf("[audit] case=%s x402 init failed: %v", auditCaseID, err)
+		h.saveAuditError(ctx, auditCaseID, creative, "Audit failed: init x402 session: "+err.Error())
+		h.settleReservation(context.Background(), reservationID, true, db.SpendReservationStatusSettled)
+		return
+	}
+
 	triageIn := audit.TriageInput{
 		CreativeURL:     *creative.ImageURL,
-		CreativeHash:   *creative.CreativeHash,
+		CreativeHash:    *creative.CreativeHash,
 		DeclaredLanding: creative.LandingURL,
 		ProjectName:     creative.ProjectName,
 		ImageData:       imageData,
@@ -84,10 +129,18 @@ func (h *Handler) runAuditInBackground(auditCaseID string, creative db.Creative,
 		triageIn.ChainID = *creative.ChainID
 	}
 
-	triageOut, err := audit.RunTriage(ctx, h.Config.AnthropicAPIKey, h.Config.AuditModel, triageIn)
+	triageOut, err := audit.RunTriage(
+		ctx,
+		h.Config.AnthropicAPIKey,
+		h.Config.AuditModel,
+		triageIn,
+		session.NewHTTPClient("anthropic-audit", 2*time.Minute),
+		session.NewHTTPClient("audit-tools", 30*time.Second),
+	)
 	if err != nil {
 		log.Printf("[audit] case=%s triage failed: %v", auditCaseID, err)
 		h.saveAuditError(ctx, auditCaseID, creative, "Audit failed: "+err.Error())
+		h.settleReservation(context.Background(), reservationID, true, db.SpendReservationStatusSettled)
 		return
 	}
 
@@ -135,15 +188,24 @@ func (h *Handler) runAuditInBackground(auditCaseID string, creative db.Creative,
 	agentThinkingJSON, _ := json.Marshal(triageOut.AgentThinking)
 	if err := h.completeApprovedAudit(ctx, auditCaseID, creative, riskScore, summary, agentThinkingJSON); err != nil {
 		log.Printf("[audit] case=%s finalize pass failed: %v", auditCaseID, err)
+		h.saveAuditError(ctx, auditCaseID, creative, "Audit finalize failed: "+err.Error())
+		h.settleReservation(context.Background(), reservationID, true, db.SpendReservationStatusSettled)
 		return
 	}
 
-	go h.runCreativeAnalysis(creative, auditCaseID, summary, imageData)
+	h.runCreativeAnalysis(
+		creative,
+		auditCaseID,
+		summary,
+		imageData,
+		session.NewHTTPClient("anthropic-audit-analysis", 2*time.Minute),
+	)
+	h.settleReservation(context.Background(), reservationID, true, db.SpendReservationStatusSettled)
 
 	log.Printf("[audit] case=%s complete", auditCaseID)
 }
 
-func (h *Handler) runCreativeAnalysis(creative db.Creative, auditCaseID string, auditSummary string, imageData []byte) {
+func (h *Handler) runCreativeAnalysis(creative db.Creative, auditCaseID string, auditSummary string, imageData []byte, httpClient *http.Client) {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
 
@@ -156,13 +218,13 @@ func (h *Handler) runCreativeAnalysis(creative db.Creative, auditCaseID string, 
 	}
 
 	analysisOut, err := audit.RunCreativeAnalysis(ctx, h.Config.AnthropicAPIKey, h.Config.AuditModel, audit.CreativeAnalysisInput{
-		CreativeID:  creative.ID,
-		CreativeURL: deref(creative.ImageURL),
-		ProjectName: creative.ProjectName,
-		LandingURL:  creative.LandingURL,
+		CreativeID:   creative.ID,
+		CreativeURL:  deref(creative.ImageURL),
+		ProjectName:  creative.ProjectName,
+		LandingURL:   creative.LandingURL,
 		AuditSummary: auditSummary,
-		ImageBase64: imageB64,
-	})
+		ImageBase64:  imageB64,
+	}, httpClient)
 	if err != nil {
 		log.Printf("[analysis] creative=%s failed: %v", creative.ID, err)
 		return

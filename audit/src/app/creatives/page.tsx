@@ -128,6 +128,7 @@ function GenerateModal({ onClose, onCreated }: { onClose: () => void; onCreated:
   const [phase, setPhase] = useState<string>("idle");
   const [steps, setSteps] = useState<any[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [billingUrl, setBillingUrl] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
   async function startGeneration() {
@@ -136,6 +137,7 @@ function GenerateModal({ onClose, onCreated }: { onClose: () => void; onCreated:
       return;
     }
     setError(null);
+    setBillingUrl(null);
     setSubmitting(true);
     try {
       const res = await apiFetch("/api/creatives/generate", {
@@ -154,6 +156,9 @@ function GenerateModal({ onClose, onCreated }: { onClose: () => void; onCreated:
       });
       const data = await res.json();
       if (!res.ok) {
+        if (res.status === 402 && data.billingUrl) {
+          setBillingUrl(data.billingUrl);
+        }
         setError(data.error || "Generation failed to start");
         setSubmitting(false);
         return;
@@ -271,7 +276,16 @@ function GenerateModal({ onClose, onCreated }: { onClose: () => void; onCreated:
 
             {error && (
               <div className="p-3 rounded-lg text-sm" style={{ background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.3)", color: "#f87171" }}>
-                {error}
+                <div>{error}</div>
+                {billingUrl && (
+                  <button
+                    onClick={() => router.push(billingUrl)}
+                    className="mt-2 underline"
+                    style={{ color: "#f8fafc" }}
+                  >
+                    Open Billing
+                  </button>
+                )}
               </div>
             )}
 

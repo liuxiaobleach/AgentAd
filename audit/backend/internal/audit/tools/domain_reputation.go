@@ -39,6 +39,10 @@ type DomainReputationResult struct {
 // CheckDomainReputation performs a lightweight reputation check on the
 // given domain, inspecting its TLD, known-safe status, and SSL availability.
 func CheckDomainReputation(domain string) *DomainReputationResult {
+	return CheckDomainReputationWithClient(domain, nil)
+}
+
+func CheckDomainReputationWithClient(domain string, httpClient *http.Client) *DomainReputationResult {
 	domain = strings.ToLower(strings.TrimSpace(domain))
 
 	result := &DomainReputationResult{
@@ -51,7 +55,7 @@ func CheckDomainReputation(domain string) *DomainReputationResult {
 		result.RiskLevel = "low"
 		result.Flags = append(result.Flags, "known_safe_domain")
 		// Still check SSL for completeness.
-		result.HasSSL = checkSSL(domain)
+		result.HasSSL = checkSSL(domain, httpClient)
 		return result
 	}
 
@@ -66,7 +70,7 @@ func CheckDomainReputation(domain string) *DomainReputationResult {
 	}
 
 	// Check SSL.
-	result.HasSSL = checkSSL(domain)
+	result.HasSSL = checkSSL(domain, httpClient)
 	if !result.HasSSL {
 		result.Flags = append(result.Flags, "no_ssl")
 	}
@@ -86,17 +90,20 @@ func CheckDomainReputation(domain string) *DomainReputationResult {
 
 // checkSSL attempts an HTTPS HEAD request to the domain to determine
 // whether it has a valid SSL certificate.
-func checkSSL(domain string) bool {
-	client := &http.Client{
-		Timeout: 5 * time.Second,
-		Transport: &http.Transport{
-			TLSClientConfig: &tls.Config{
-				MinVersion: tls.VersionTLS12,
+func checkSSL(domain string, httpClient *http.Client) bool {
+	client := httpClient
+	if client == nil {
+		client = &http.Client{
+			Timeout: 5 * time.Second,
+			Transport: &http.Transport{
+				TLSClientConfig: &tls.Config{
+					MinVersion: tls.VersionTLS12,
+				},
 			},
-		},
-		CheckRedirect: func(req *http.Request, via []*http.Request) error {
-			return http.ErrUseLastResponse
-		},
+			CheckRedirect: func(req *http.Request, via []*http.Request) error {
+				return http.ErrUseLastResponse
+			},
+		}
 	}
 
 	resp, err := client.Head("https://" + domain)

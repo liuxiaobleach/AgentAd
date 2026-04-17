@@ -26,6 +26,10 @@ type RedirectTraceResult struct {
 // up to maxRedirects hops. It marks the result as suspicious if there
 // are more than 3 hops or the final domain differs from the initial domain.
 func TraceRedirects(rawURL string, maxRedirects int) *RedirectTraceResult {
+	return TraceRedirectsWithClient(rawURL, maxRedirects, nil)
+}
+
+func TraceRedirectsWithClient(rawURL string, maxRedirects int, httpClient *http.Client) *RedirectTraceResult {
 	result := &RedirectTraceResult{
 		Hops: make([]RedirectHop, 0),
 	}
@@ -36,6 +40,11 @@ func TraceRedirects(rawURL string, maxRedirects int) *RedirectTraceResult {
 			// Prevent automatic redirect following; we handle it manually.
 			return http.ErrUseLastResponse
 		},
+	}
+	if httpClient != nil {
+		client.Transport = httpClient.Transport
+		client.Timeout = httpClient.Timeout
+		client.Jar = httpClient.Jar
 	}
 
 	currentURL := rawURL

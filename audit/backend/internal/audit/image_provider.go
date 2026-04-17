@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"slices"
 	"strings"
 	"time"
 )
@@ -42,36 +43,49 @@ type ImageProvider interface {
 }
 
 // NewImageProvider auto-selects the backend based on what keys are available:
-//   - If geminiKey is set → use Gemini Imagen 3
+//   - If geminiKey is set → use Gemini Imagen
 //   - Else if openaiKey is set → use OpenAI DALL-E / gpt-image
 //   - Else → error at generation time
-func NewImageProvider(openaiKey, openaiModel, geminiKey, geminiModel string) ImageProvider {
+func NewImageProvider(
+	openaiKey, openaiModel string,
+	openaiHTTPClient *http.Client,
+	geminiKey, geminiModel string,
+	geminiHTTPClient *http.Client,
+) ImageProvider {
 	if geminiKey != "" {
 		if geminiModel == "" {
-			geminiModel = "imagen-3.0-generate-002"
+			geminiModel = "imagen-4.0-fast-generate-001"
 		}
-		return &geminiProvider{apiKey: geminiKey, model: geminiModel}
+		return &geminiProvider{apiKey: geminiKey, model: geminiModel, httpClient: geminiHTTPClient}
 	}
 	if openaiKey != "" {
 		if openaiModel == "" {
 			openaiModel = "dall-e-3"
 		}
-		return &openAIProvider{apiKey: openaiKey, model: openaiModel}
+		return &openAIProvider{apiKey: openaiKey, model: openaiModel, httpClient: openaiHTTPClient}
 	}
 	return &noopProvider{}
 }
 
 // ---------------------------------------------------------------------------
-// Gemini / Imagen 3
+// Gemini / Imagen
 // ---------------------------------------------------------------------------
 
 type geminiProvider struct {
-	apiKey string
-	model  string
+	apiKey     string
+	model      string
+	httpClient *http.Client
+}
+
+var preferredGeminiPredictModels = []string{
+	"imagen-4.0-fast-generate-001",
+	"imagen-4.0-generate-001",
+	"imagen-4.0-ultra-generate-001",
+	"imagen-3.0-generate-002",
 }
 
 type geminiImageRequest struct {
-	Instances  []geminiInstance  `json:"instances"`
+	Instances  []geminiInstance `json:"instances"`
 	Parameters geminiParameters `json:"parameters"`
 }
 
@@ -80,8 +94,8 @@ type geminiInstance struct {
 }
 
 type geminiParameters struct {
-	SampleCount    int    `json:"sampleCount"`
-	AspectRatio    string `json:"aspectRatio,omitempty"`
+	SampleCount      int    `json:"sampleCount"`
+	AspectRatio      string `json:"aspectRatio,omitempty"`
 	PersonGeneration string `json:"personGeneration,omitempty"`
 }
 
@@ -96,17 +110,49 @@ type geminiImageResponse struct {
 	} `json:"error"`
 }
 
+type geminiModelListResponse struct {
+	Models []struct {
+		Name                       string   `json:"name"`
+		SupportedGenerationMethods []string `json:"supportedGenerationMethods"`
+	} `json:"models"`
+}
+
 func (p *geminiProvider) Generate(ctx context.Context, prompt string, size ImageSize) ([]byte, error) {
+	imgBytes, err := p.generateWithModel(ctx, p.model, prompt, size)
+	if err == nil {
+		return imgBytes, nil
+	}
+	if !isGeminiModelUnavailableError(err) {
+		return nil, err
+	}
+
+	fallbackModel, fallbackErr := p.resolvePredictModel(ctx)
+	if fallbackErr != nil {
+		return nil, fmt.Errorf("%w (list models fallback failed: %v)", err, fallbackErr)
+	}
+	if fallbackModel == "" || fallbackModel == p.model {
+		return nil, err
+	}
+
+	imgBytes, retryErr := p.generateWithModel(ctx, fallbackModel, prompt, size)
+	if retryErr != nil {
+		return nil, retryErr
+	}
+	p.model = fallbackModel
+	return imgBytes, nil
+}
+
+func (p *geminiProvider) generateWithModel(ctx context.Context, model, prompt string, size ImageSize) ([]byte, error) {
 	url := fmt.Sprintf(
 		"https://generativelanguage.googleapis.com/v1beta/models/%s:predict?key=%s",
-		p.model, p.apiKey,
+		model, p.apiKey,
 	)
 
 	reqBody := geminiImageRequest{
 		Instances: []geminiInstance{{Prompt: prompt}},
 		Parameters: geminiParameters{
-			SampleCount:    1,
-			AspectRatio:    size.GeminiRatio,
+			SampleCount:      1,
+			AspectRatio:      size.GeminiRatio,
 			PersonGeneration: "dont_allow",
 		},
 	}
@@ -118,7 +164,10 @@ func (p *geminiProvider) Generate(ctx context.Context, prompt string, size Image
 	}
 	httpReq.Header.Set("Content-Type", "application/json")
 
-	client := &http.Client{Timeout: 3 * time.Minute}
+	client := p.httpClient
+	if client == nil {
+		client = &http.Client{Timeout: 3 * time.Minute}
+	}
 	resp, err := client.Do(httpReq)
 	if err != nil {
 		return nil, fmt.Errorf("gemini image request: %w", err)
@@ -135,13 +184,77 @@ func (p *geminiProvider) Generate(ctx context.Context, prompt string, size Image
 		return nil, fmt.Errorf("decode gemini response: %w", err)
 	}
 	if out.Error != nil {
-		return nil, fmt.Errorf("gemini error %d: %s", out.Error.Code, out.Error.Message)
+		return nil, fmt.Errorf("gemini model %s error %d: %s", model, out.Error.Code, out.Error.Message)
 	}
 	if len(out.Predictions) == 0 {
-		return nil, fmt.Errorf("gemini returned no images")
+		return nil, fmt.Errorf("gemini model %s returned no images", model)
 	}
 
 	return base64.StdEncoding.DecodeString(out.Predictions[0].BytesBase64Encoded)
+}
+
+func (p *geminiProvider) resolvePredictModel(ctx context.Context) (string, error) {
+	url := fmt.Sprintf("https://generativelanguage.googleapis.com/v1beta/models?key=%s", p.apiKey)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return "", err
+	}
+
+	client := p.httpClient
+	if client == nil {
+		client = &http.Client{Timeout: time.Minute}
+	}
+	resp, err := client.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("list gemini models: %w", err)
+	}
+	defer resp.Body.Close()
+
+	respBytes, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("list gemini models API %d: %s", resp.StatusCode, string(respBytes))
+	}
+
+	var out geminiModelListResponse
+	if err := json.Unmarshal(respBytes, &out); err != nil {
+		return "", fmt.Errorf("decode gemini models response: %w", err)
+	}
+
+	availablePredictModels := make(map[string]struct{}, len(out.Models))
+	for _, model := range out.Models {
+		name := strings.TrimPrefix(model.Name, "models/")
+		if name == "" || !slices.Contains(model.SupportedGenerationMethods, "predict") {
+			continue
+		}
+		availablePredictModels[name] = struct{}{}
+	}
+	if _, ok := availablePredictModels[p.model]; ok {
+		return p.model, nil
+	}
+	for _, candidate := range preferredGeminiPredictModels {
+		if _, ok := availablePredictModels[candidate]; ok {
+			return candidate, nil
+		}
+	}
+	for _, model := range out.Models {
+		name := strings.TrimPrefix(model.Name, "models/")
+		if name == "" || !slices.Contains(model.SupportedGenerationMethods, "predict") {
+			continue
+		}
+		return name, nil
+	}
+
+	return "", fmt.Errorf("no predict-capable Gemini image model available for this API key")
+}
+
+func isGeminiModelUnavailableError(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "gemini image api 404") ||
+		strings.Contains(msg, "not supported for predict") ||
+		strings.Contains(msg, " is not found ")
 }
 
 // ---------------------------------------------------------------------------
@@ -149,8 +262,9 @@ func (p *geminiProvider) Generate(ctx context.Context, prompt string, size Image
 // ---------------------------------------------------------------------------
 
 type openAIProvider struct {
-	apiKey string
-	model  string
+	apiKey     string
+	model      string
+	httpClient *http.Client
 }
 
 type openAIImageRequest struct {
@@ -200,7 +314,10 @@ func (p *openAIProvider) Generate(ctx context.Context, prompt string, size Image
 	httpReq.Header.Set("Content-Type", "application/json")
 	httpReq.Header.Set("Authorization", "Bearer "+p.apiKey)
 
-	client := &http.Client{Timeout: 3 * time.Minute}
+	client := p.httpClient
+	if client == nil {
+		client = &http.Client{Timeout: 3 * time.Minute}
+	}
 	resp, err := client.Do(httpReq)
 	if err != nil {
 		return nil, fmt.Errorf("openai image request: %w", err)

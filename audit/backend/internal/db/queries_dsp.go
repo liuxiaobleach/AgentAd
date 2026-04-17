@@ -3,6 +3,7 @@ package db
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"time"
 
@@ -25,6 +26,71 @@ func (q *Queries) GetAdvertiserByEmail(ctx context.Context, email string) (Adver
 		return Advertiser{}, fmt.Errorf("advertiser not found: %w", err)
 	}
 	return a, nil
+}
+
+func (q *Queries) GetAdvertiserByID(ctx context.Context, id string) (Advertiser, error) {
+	const sql = `
+		SELECT id, name, wallet_address, contact_email, password_hash, created_at
+		FROM advertisers WHERE id = $1`
+	var a Advertiser
+	err := q.Pool.QueryRow(ctx, sql, id).Scan(
+		&a.ID, &a.Name, &a.WalletAddress, &a.ContactEmail, &a.PasswordHash, &a.CreatedAt,
+	)
+	if err != nil {
+		return Advertiser{}, fmt.Errorf("advertiser not found: %w", err)
+	}
+	return a, nil
+}
+
+func (q *Queries) UpdateAdvertiserWalletAddress(ctx context.Context, advertiserID, walletAddress string) (Advertiser, error) {
+	const sql = `
+		UPDATE advertisers
+		SET wallet_address = $1
+		WHERE id = $2
+		RETURNING id, name, wallet_address, contact_email, password_hash, created_at`
+	var a Advertiser
+	err := q.Pool.QueryRow(ctx, sql, walletAddress, advertiserID).Scan(
+		&a.ID, &a.Name, &a.WalletAddress, &a.ContactEmail, &a.PasswordHash, &a.CreatedAt,
+	)
+	if err != nil {
+		return Advertiser{}, fmt.Errorf("update advertiser wallet: %w", err)
+	}
+	return a, nil
+}
+
+func (q *Queries) GetAdvertiserByWalletAddress(ctx context.Context, walletAddress string) (Advertiser, error) {
+	const sql = `
+		SELECT id, name, wallet_address, contact_email, password_hash, created_at
+		FROM advertisers
+		WHERE LOWER(wallet_address) = LOWER($1)
+		ORDER BY created_at ASC
+		LIMIT 1`
+	var a Advertiser
+	err := q.Pool.QueryRow(ctx, sql, walletAddress).Scan(
+		&a.ID, &a.Name, &a.WalletAddress, &a.ContactEmail, &a.PasswordHash, &a.CreatedAt,
+	)
+	if err != nil {
+		return Advertiser{}, fmt.Errorf("advertiser not found by wallet: %w", err)
+	}
+	return a, nil
+}
+
+func (q *Queries) IsWalletAddressLinkedToOtherAdvertiser(ctx context.Context, walletAddress, advertiserID string) (bool, error) {
+	const sql = `
+		SELECT id
+		FROM advertisers
+		WHERE LOWER(wallet_address) = LOWER($1)
+		  AND id <> $2
+		LIMIT 1`
+	var otherAdvertiserID string
+	err := q.Pool.QueryRow(ctx, sql, walletAddress, advertiserID).Scan(&otherAdvertiserID)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return false, nil
+		}
+		return false, fmt.Errorf("check wallet uniqueness: %w", err)
+	}
+	return otherAdvertiserID != "", nil
 }
 
 // ---------------------------------------------------------------------------
@@ -256,28 +322,28 @@ func (q *Queries) CreateAuctionResult(ctx context.Context, res AuctionResult) (A
 // Each row represents a single bid made by one of the advertiser's agents,
 // joined with the auction context and the outcome (won/lost, settled, clicked).
 type BidListRow struct {
-	BidID           string     `json:"bidId"`
-	AuctionID       string     `json:"auctionId"`
-	SlotID          string     `json:"slotId"`
-	SlotType        string     `json:"slotType"`
-	Size            string     `json:"size"`
-	FloorCpm        float64    `json:"floorCpm"`
-	SiteCategory    *string    `json:"siteCategory"`
-	UserSegments    []string   `json:"userSegments"`
-	AgentID         string     `json:"agentId"`
-	AgentName       string     `json:"agentName"`
-	Strategy        string     `json:"strategy"`
-	CreativeID      *string    `json:"creativeId"`
-	CreativeName    *string    `json:"creativeName"`
-	BidCpm          *float64   `json:"bidCpm"`
-	PredictedCtr    *float64   `json:"predictedCtr"`
-	Confidence      *float64   `json:"confidence"`
-	Reason          *string    `json:"reason"`
-	Won             bool       `json:"won"`
-	SettlementPrice *float64   `json:"settlementPrice"`
-	Clicked         *bool      `json:"clicked"`
-	BidCount        int        `json:"bidCount"`
-	CreatedAt       time.Time  `json:"createdAt"`
+	BidID           string    `json:"bidId"`
+	AuctionID       string    `json:"auctionId"`
+	SlotID          string    `json:"slotId"`
+	SlotType        string    `json:"slotType"`
+	Size            string    `json:"size"`
+	FloorCpm        float64   `json:"floorCpm"`
+	SiteCategory    *string   `json:"siteCategory"`
+	UserSegments    []string  `json:"userSegments"`
+	AgentID         string    `json:"agentId"`
+	AgentName       string    `json:"agentName"`
+	Strategy        string    `json:"strategy"`
+	CreativeID      *string   `json:"creativeId"`
+	CreativeName    *string   `json:"creativeName"`
+	BidCpm          *float64  `json:"bidCpm"`
+	PredictedCtr    *float64  `json:"predictedCtr"`
+	Confidence      *float64  `json:"confidence"`
+	Reason          *string   `json:"reason"`
+	Won             bool      `json:"won"`
+	SettlementPrice *float64  `json:"settlementPrice"`
+	Clicked         *bool     `json:"clicked"`
+	BidCount        int       `json:"bidCount"`
+	CreatedAt       time.Time `json:"createdAt"`
 }
 
 // ListBidsByAdvertiser returns all bids (including losing and non-participating bids)
@@ -601,44 +667,44 @@ func (q *Queries) DeleteCreative(ctx context.Context, id, advertiserID string) e
 // ---------------------------------------------------------------------------
 
 type AgentPerformanceStats struct {
-	AgentID           string  `json:"agentId"`
-	AgentName         string  `json:"agentName"`
-	Strategy          string  `json:"strategy"`
-	TotalAuctions     int     `json:"totalAuctions"`
-	TotalBids         int     `json:"totalBids"`
-	Wins              int     `json:"wins"`
-	WinRate           float64 `json:"winRate"`
-	TotalImpressions  int     `json:"totalImpressions"`
-	TotalClicks       int     `json:"totalClicks"`
-	CTR               float64 `json:"ctr"`
-	AvgBidCpm         float64 `json:"avgBidCpm"`
-	AvgSettlement     float64 `json:"avgSettlement"`
-	TotalSpend        float64 `json:"totalSpend"`
+	AgentID          string  `json:"agentId"`
+	AgentName        string  `json:"agentName"`
+	Strategy         string  `json:"strategy"`
+	TotalAuctions    int     `json:"totalAuctions"`
+	TotalBids        int     `json:"totalBids"`
+	Wins             int     `json:"wins"`
+	WinRate          float64 `json:"winRate"`
+	TotalImpressions int     `json:"totalImpressions"`
+	TotalClicks      int     `json:"totalClicks"`
+	CTR              float64 `json:"ctr"`
+	AvgBidCpm        float64 `json:"avgBidCpm"`
+	AvgSettlement    float64 `json:"avgSettlement"`
+	TotalSpend       float64 `json:"totalSpend"`
 }
 
 type CreativePerformanceStats struct {
-	CreativeID   string  `json:"creativeId"`
-	CreativeName string  `json:"creativeName"`
-	Impressions  int     `json:"impressions"`
-	Clicks       int     `json:"clicks"`
-	CTR          float64 `json:"ctr"`
-	TimesSelected int    `json:"timesSelected"`
-	Wins         int     `json:"wins"`
-	AvgBidCpm    float64 `json:"avgBidCpm"`
+	CreativeID    string  `json:"creativeId"`
+	CreativeName  string  `json:"creativeName"`
+	Impressions   int     `json:"impressions"`
+	Clicks        int     `json:"clicks"`
+	CTR           float64 `json:"ctr"`
+	TimesSelected int     `json:"timesSelected"`
+	Wins          int     `json:"wins"`
+	AvgBidCpm     float64 `json:"avgBidCpm"`
 }
 
 type RecentAuctionRecord struct {
-	AuctionID     string   `json:"auctionId"`
-	SlotType      string   `json:"slotType"`
-	SiteCategory  *string  `json:"siteCategory"`
-	BidCpm        *float64 `json:"bidCpm"`
-	PredictedCtr  *float64 `json:"predictedCtr"`
-	Won           bool     `json:"won"`
-	Clicked       bool     `json:"clicked"`
-	Settlement    *float64 `json:"settlementPrice"`
-	CreativeName  string   `json:"creativeName"`
-	Reason        *string  `json:"reason"`
-	CreatedAt     time.Time `json:"createdAt"`
+	AuctionID    string    `json:"auctionId"`
+	SlotType     string    `json:"slotType"`
+	SiteCategory *string   `json:"siteCategory"`
+	BidCpm       *float64  `json:"bidCpm"`
+	PredictedCtr *float64  `json:"predictedCtr"`
+	Won          bool      `json:"won"`
+	Clicked      bool      `json:"clicked"`
+	Settlement   *float64  `json:"settlementPrice"`
+	CreativeName string    `json:"creativeName"`
+	Reason       *string   `json:"reason"`
+	CreatedAt    time.Time `json:"createdAt"`
 }
 
 func (q *Queries) GetAgentPerformanceStats(ctx context.Context, advertiserID string) ([]AgentPerformanceStats, error) {

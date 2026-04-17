@@ -4,18 +4,23 @@ import (
 	"context"
 	"log"
 	"net/http"
+	"os/signal"
+	"syscall"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/zkdsp/audit-backend/internal/config"
 	"github.com/zkdsp/audit-backend/internal/db"
 	"github.com/zkdsp/audit-backend/internal/handler"
+	"github.com/zkdsp/audit-backend/internal/onchain"
 )
 
 func main() {
 	cfg := config.Load()
 
-	ctx := context.Background()
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
+
 	pool, err := db.NewPool(ctx, cfg.DatabaseURL)
 	if err != nil {
 		log.Fatalf("DB connect failed: %v", err)
@@ -24,6 +29,12 @@ func main() {
 
 	queries := db.NewQueries(pool)
 	h := handler.New(queries, cfg)
+	if watcher, err := onchain.NewSepoliaDepositWatcher(cfg, queries); err != nil {
+		log.Printf("[billing] sepolia deposit watcher disabled: %v", err)
+	} else {
+		watcher.Start(ctx)
+		log.Printf("[billing] sepolia deposit watcher started treasury=%s token=%s", cfg.SepoliaTreasuryAddress, cfg.SepoliaUSDCAddress)
+	}
 
 	r := chi.NewRouter()
 	r.Use(middleware.Logger)
@@ -48,6 +59,13 @@ func main() {
 
 		// Auth
 		r.Get("/api/auth/me", h.GetMe)
+		r.Get("/api/billing/balance", h.GetBillingBalance)
+		r.Get("/api/billing/ledger", h.ListBillingLedger)
+		r.Get("/api/billing/wallet", h.GetBillingWallet)
+		r.Get("/api/billing/wallet/link-challenge", h.GetBillingWalletLinkChallenge)
+		r.Post("/api/billing/wallet/link", h.LinkBillingWallet)
+		r.Post("/api/billing/claim-deposit", h.ClaimBillingDeposit)
+		r.Post("/api/billing/topups", h.CreateBillingTopUp)
 
 		// Creatives (scoped to advertiser)
 		r.Post("/api/creatives", h.CreateCreative)

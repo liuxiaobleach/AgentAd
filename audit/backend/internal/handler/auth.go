@@ -22,9 +22,10 @@ type LoginRequest struct {
 type LoginResponse struct {
 	Token      string `json:"token"`
 	Advertiser struct {
-		ID    string `json:"id"`
-		Name  string `json:"name"`
-		Email string `json:"email"`
+		ID            string  `json:"id"`
+		Name          string  `json:"name"`
+		Email         string  `json:"email"`
+		WalletAddress *string `json:"walletAddress"`
 	} `json:"advertiser"`
 }
 
@@ -77,6 +78,7 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 	resp.Advertiser.ID = adv.ID
 	resp.Advertiser.Name = adv.Name
 	resp.Advertiser.Email = adv.ContactEmail
+	resp.Advertiser.WalletAddress = normalizedOptionalWalletAddress(adv.WalletAddress)
 	writeJSON(w, 200, resp)
 }
 
@@ -86,10 +88,17 @@ func (h *Handler) GetMe(w http.ResponseWriter, r *http.Request) {
 		writeError(w, 401, "Not authenticated")
 		return
 	}
+
+	advertiser, err := h.Queries.GetAdvertiserByID(r.Context(), claims.AdvertiserID)
+	if err != nil {
+		writeError(w, 500, "Failed to load advertiser profile")
+		return
+	}
 	writeJSON(w, 200, map[string]interface{}{
-		"id":    claims.AdvertiserID,
-		"name":  claims.Name,
-		"email": claims.Email,
+		"id":            advertiser.ID,
+		"name":          advertiser.Name,
+		"email":         advertiser.ContactEmail,
+		"walletAddress": normalizedOptionalWalletAddress(advertiser.WalletAddress),
 	})
 }
 
@@ -178,4 +187,15 @@ func verifyToken(token string) (*TokenClaims, error) {
 	}
 
 	return &claims, nil
+}
+
+func normalizedOptionalWalletAddress(raw *string) *string {
+	if raw == nil {
+		return nil
+	}
+	normalized, err := normalizeHexAddress(*raw)
+	if err != nil {
+		return nil
+	}
+	return &normalized
 }

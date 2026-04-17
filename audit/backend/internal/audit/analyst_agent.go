@@ -17,12 +17,12 @@ type AnalystInput struct {
 }
 
 type AnalystOutput struct {
-	OverallAssessment  string              `json:"overallAssessment"`
-	PerformanceScore   int                 `json:"performanceScore"`
-	KeyFindings        []AnalystFinding    `json:"keyFindings"`
-	Recommendations    []AnalystRecommendation `json:"recommendations"`
-	CreativeInsights   []CreativeInsight   `json:"creativeInsights"`
-	StrategyAdvice     string              `json:"strategyAdvice"`
+	OverallAssessment string                  `json:"overallAssessment"`
+	PerformanceScore  int                     `json:"performanceScore"`
+	KeyFindings       []AnalystFinding        `json:"keyFindings"`
+	Recommendations   []AnalystRecommendation `json:"recommendations"`
+	CreativeInsights  []CreativeInsight       `json:"creativeInsights"`
+	StrategyAdvice    string                  `json:"strategyAdvice"`
 }
 
 type AnalystFinding struct {
@@ -32,9 +32,9 @@ type AnalystFinding struct {
 }
 
 type AnalystRecommendation struct {
-	Priority    string `json:"priority"`
-	Action      string `json:"action"`
-	Rationale   string `json:"rationale"`
+	Priority       string `json:"priority"`
+	Action         string `json:"action"`
+	Rationale      string `json:"rationale"`
 	ExpectedImpact string `json:"expectedImpact"`
 }
 
@@ -90,7 +90,7 @@ const analystSystemPrompt = `你是 ZKDSP 广告平台的广告分析师 Agent�
 - 建议要具体可操作，不要泛泛而谈`
 
 func RunAnalystAgent(ctx context.Context, apiKey, model string, input AnalystInput) (*AnalystOutput, error) {
-	client := newAnthropicClient(apiKey)
+	client := newAnthropicClient(apiKey, nil)
 
 	inputJSON, _ := json.MarshalIndent(input, "", "  ")
 	prompt := fmt.Sprintf(`请分析以下广告主 "%s" 的投放数据，给出诊断和优化建议：

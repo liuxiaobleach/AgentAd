@@ -8,25 +8,31 @@ import (
 	"github.com/zkdsp/audit-backend/internal/audit"
 	"github.com/zkdsp/audit-backend/internal/config"
 	"github.com/zkdsp/audit-backend/internal/db"
+	"github.com/zkdsp/audit-backend/internal/payments"
 )
 
 type GenerationState struct {
-	CreativeID string                  `json:"creativeId"`
-	Phase      string                  `json:"phase"`      // "queued", "brief", "prompt", "image", "completed", "failed"
-	Steps      []audit.GenerationStep  `json:"steps"`
-	Error      string                  `json:"error,omitempty"`
+	CreativeID string                   `json:"creativeId"`
+	Phase      string                   `json:"phase"` // "queued", "brief", "prompt", "image", "completed", "failed"
+	Steps      []audit.GenerationStep   `json:"steps"`
+	Error      string                   `json:"error,omitempty"`
 	Directive  *audit.CreativeDirective `json:"directive,omitempty"`
-	Prompt     string                  `json:"prompt,omitempty"`
+	Prompt     string                   `json:"prompt,omitempty"`
 }
 
 type Handler struct {
 	Queries     *db.Queries
 	Config      *config.Config
+	Payments    *payments.BuyerFactory
 	generations sync.Map // creativeID -> *GenerationState
 }
 
 func New(q *db.Queries, cfg *config.Config) *Handler {
-	return &Handler{Queries: q, Config: cfg}
+	return &Handler{
+		Queries:  q,
+		Config:   cfg,
+		Payments: payments.NewBuyerFactory(cfg, q),
+	}
 }
 
 func (h *Handler) SetGenerationState(id string, state *GenerationState) {

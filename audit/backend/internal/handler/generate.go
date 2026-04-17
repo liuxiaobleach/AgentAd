@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
@@ -17,22 +18,22 @@ import (
 )
 
 type GenerateCreativeRequest struct {
-	Brief            string   `json:"brief"`
-	CreativeName     string   `json:"creativeName"`
-	ProjectName      string   `json:"projectName"`
-	LandingURL       string   `json:"landingUrl"`
-	TargetAudiences  []string `json:"targetAudiences"`
-	StyleHint        string   `json:"styleHint"`
-	AspectRatio      string   `json:"aspectRatio"`
-	AutoSubmitAudit  bool     `json:"autoSubmitAudit"`
+	Brief           string   `json:"brief"`
+	CreativeName    string   `json:"creativeName"`
+	ProjectName     string   `json:"projectName"`
+	LandingURL      string   `json:"landingUrl"`
+	TargetAudiences []string `json:"targetAudiences"`
+	StyleHint       string   `json:"styleHint"`
+	AspectRatio     string   `json:"aspectRatio"`
+	AutoSubmitAudit bool     `json:"autoSubmitAudit"`
 }
 
 // GenerateCreative accepts a free-form advertiser brief and kicks off an async
 // agent pipeline that:
-//   1. Uses Claude to turn the brief into a structured creative directive.
-//   2. Uses Claude to write a high-quality image generation prompt.
-//   3. Calls the image provider (OpenAI) to produce the actual image.
-//   4. Writes the image into uploads/ and updates the creative record.
+//  1. Uses Claude to turn the brief into a structured creative directive.
+//  2. Uses Claude to write a high-quality image generation prompt.
+//  3. Calls the image provider (OpenAI) to produce the actual image.
+//  4. Writes the image into uploads/ and updates the creative record.
 //
 // Returns 202 immediately with the creativeId; the client polls for state.
 func (h *Handler) GenerateCreative(w http.ResponseWriter, r *http.Request) {
@@ -58,6 +59,28 @@ func (h *Handler) GenerateCreative(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	reservation, err := h.reserveSpend(
+		r.Context(),
+		claims.AdvertiserID,
+		"creative_generation",
+		nil,
+		h.Config.GenerateBaseFeeAtomic,
+		h.Config.GenerateExternalCapAtomic,
+		map[string]interface{}{
+			"creativeName": req.CreativeName,
+			"projectName":  req.ProjectName,
+			"landingUrl":   req.LandingURL,
+		},
+	)
+	if err != nil {
+		if errors.Is(err, db.ErrInsufficientBalance) {
+			h.writeInsufficientBalance(w, r.Context(), claims.AdvertiserID, h.Config.GenerateBaseFeeAtomic+h.Config.GenerateExternalCapAtomic)
+			return
+		}
+		writeError(w, 500, "Failed to reserve generation budget: "+err.Error())
+		return
+	}
+
 	// Create the creative in DRAFT with no image yet.
 	notes := fmt.Sprintf("[AI-generated]\nBrief: %s", req.Brief)
 	creative := db.Creative{
@@ -71,8 +94,12 @@ func (h *Handler) GenerateCreative(w http.ResponseWriter, r *http.Request) {
 
 	created, err := h.Queries.CreateCreative(r.Context(), creative)
 	if err != nil {
+		h.settleReservation(context.Background(), reservation.ID, false, db.SpendReservationStatusReleased)
 		writeError(w, 500, "Failed to create creative placeholder: "+err.Error())
 		return
+	}
+	if err := h.Queries.UpdateSpendReservationOperationRef(r.Context(), reservation.ID, created.ID); err != nil {
+		log.Printf("[gen] creative=%s failed to attach reservation=%s: %v", created.ID, reservation.ID, err)
 	}
 
 	// Track generation progress.
@@ -84,7 +111,7 @@ func (h *Handler) GenerateCreative(w http.ResponseWriter, r *http.Request) {
 	h.SetGenerationState(created.ID, state)
 
 	// Kick off async pipeline.
-	go h.runCreativeGenerationInBackground(created.ID, req)
+	go h.runCreativeGenerationInBackground(created.ID, claims.AdvertiserID, reservation.ID, req)
 
 	writeJSON(w, 202, map[string]interface{}{
 		"creativeId": created.ID,
@@ -93,7 +120,7 @@ func (h *Handler) GenerateCreative(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func (h *Handler) runCreativeGenerationInBackground(creativeID string, req GenerateCreativeRequest) {
+func (h *Handler) runCreativeGenerationInBackground(creativeID, advertiserID, reservationID string, req GenerateCreativeRequest) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer cancel()
 
@@ -103,6 +130,15 @@ func (h *Handler) runCreativeGenerationInBackground(creativeID string, req Gener
 	if state == nil {
 		state = &GenerationState{CreativeID: creativeID}
 		h.SetGenerationState(creativeID, state)
+	}
+
+	session, err := h.Payments.NewSession(advertiserID, reservationID, h.Config.GenerateExternalCapAtomic)
+	if err != nil {
+		state.Phase = "failed"
+		state.Error = "init x402 session: " + err.Error()
+		h.settleReservation(context.Background(), reservationID, false, db.SpendReservationStatusFailed)
+		log.Printf("[gen] creative=%s x402 init failed: %v", creativeID, err)
+		return
 	}
 
 	brief := audit.CreativeBrief{
@@ -124,11 +160,14 @@ func (h *Handler) runCreativeGenerationInBackground(creativeID string, req Gener
 		ctx,
 		h.Config.AnthropicAPIKey,
 		h.Config.AuditModel,
+		session.NewHTTPClient("anthropic-generate", 2*time.Minute),
 		audit.ImageProviderConfig{
-			OpenAIKey:   h.Config.OpenAIAPIKey,
-			OpenAIModel: h.Config.ImageModel,
-			GeminiKey:   h.Config.GeminiAPIKey,
-			GeminiModel: h.Config.GeminiImageModel,
+			OpenAIKey:        h.Config.OpenAIAPIKey,
+			OpenAIModel:      h.Config.ImageModel,
+			OpenAIHTTPClient: session.NewHTTPClient("openai-images", 3*time.Minute),
+			GeminiKey:        h.Config.GeminiAPIKey,
+			GeminiModel:      h.Config.GeminiImageModel,
+			GeminiHTTPClient: session.NewHTTPClient("gemini-images", 3*time.Minute),
 		},
 		brief,
 		onStep,
@@ -139,6 +178,7 @@ func (h *Handler) runCreativeGenerationInBackground(creativeID string, req Gener
 		log.Printf("[gen] creative=%s FAILED: %v", creativeID, err)
 		errNote := fmt.Sprintf("[AI-generated]\nBrief: %s\n\n[Generation failed: %s]", req.Brief, err.Error())
 		_ = h.Queries.PatchCreativeNotes(ctx, creativeID, errNote)
+		h.settleReservation(context.Background(), reservationID, false, db.SpendReservationStatusFailed)
 		return
 	}
 
@@ -154,6 +194,7 @@ func (h *Handler) runCreativeGenerationInBackground(creativeID string, req Gener
 		state.Phase = "failed"
 		state.Error = "save image: " + err.Error()
 		log.Printf("[gen] creative=%s save image failed: %v", creativeID, err)
+		h.settleReservation(context.Background(), reservationID, false, db.SpendReservationStatusFailed)
 		return
 	}
 
@@ -165,6 +206,7 @@ func (h *Handler) runCreativeGenerationInBackground(creativeID string, req Gener
 		state.Phase = "failed"
 		state.Error = "update creative image: " + err.Error()
 		log.Printf("[gen] creative=%s db update failed: %v", creativeID, err)
+		h.settleReservation(context.Background(), reservationID, false, db.SpendReservationStatusFailed)
 		return
 	}
 
@@ -178,6 +220,11 @@ func (h *Handler) runCreativeGenerationInBackground(creativeID string, req Gener
 
 	state.Phase = "completed"
 	log.Printf("[gen] creative=%s COMPLETED", creativeID)
+	if _, err := h.Queries.FinalizeSpendReservation(ctx, reservationID, true, db.SpendReservationStatusSettled); err != nil {
+		state.Error = "billing finalize: " + err.Error()
+		log.Printf("[gen] creative=%s finalize reservation failed: %v", creativeID, err)
+		return
+	}
 
 	if req.AutoSubmitAudit {
 		log.Printf("[gen] creative=%s auto-submitting audit", creativeID)
@@ -199,14 +246,41 @@ func (h *Handler) autoSubmitAuditForCreative(creativeID string, imageData []byte
 		return
 	}
 
+	reservation, err := h.reserveSpend(
+		ctx,
+		creative.AdvertiserID,
+		"creative_audit",
+		nil,
+		h.Config.AuditBaseFeeAtomic,
+		h.Config.AuditExternalCapAtomic,
+		map[string]interface{}{
+			"creativeId":   creative.ID,
+			"creativeName": creative.CreativeName,
+			"projectName":  creative.ProjectName,
+			"trigger":      "auto_submit_after_generation",
+		},
+	)
+	if err != nil {
+		if errors.Is(err, db.ErrInsufficientBalance) {
+			log.Printf("[gen] auto-audit skipped: insufficient balance for creative=%s", creative.ID)
+			return
+		}
+		log.Printf("[gen] auto-audit reserve failed: %v", err)
+		return
+	}
+
 	auditCase, err := h.Queries.CreateAuditCase(ctx, creative.ID)
 	if err != nil {
+		h.settleReservation(context.Background(), reservation.ID, false, db.SpendReservationStatusReleased)
 		log.Printf("[gen] auto-audit create case failed: %v", err)
 		return
 	}
+	if err := h.Queries.UpdateSpendReservationOperationRef(ctx, reservation.ID, auditCase.ID); err != nil {
+		log.Printf("[gen] auto-audit attach reservation failed case=%s reservation=%s: %v", auditCase.ID, reservation.ID, err)
+	}
 	_ = h.Queries.UpdateCreativeStatus(ctx, creative.ID, db.CreativeStatusAuditing)
 
-	go h.runAuditInBackground(auditCase.ID, creative, imageData)
+	go h.runAuditInBackground(auditCase.ID, creative.AdvertiserID, reservation.ID, creative, imageData)
 }
 
 // GetGenerationStatus returns the in-memory state of an ongoing or recently

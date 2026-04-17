@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"regexp"
 	"strings"
 	"time"
@@ -23,12 +24,12 @@ type CreativeBrief struct {
 
 // CreativeDirective is the structured plan produced by the Brief Agent (Claude).
 type CreativeDirective struct {
-	Headline      string   `json:"headline"`
-	Subheadline   string   `json:"subheadline"`
-	CallToAction  string   `json:"callToAction"`
-	VisualConcept string   `json:"visualConcept"`
-	Mood          string   `json:"mood"`
-	ColorPalette  []string `json:"colorPalette"`
+	Headline         string   `json:"headline"`
+	Subheadline      string   `json:"subheadline"`
+	CallToAction     string   `json:"callToAction"`
+	VisualConcept    string   `json:"visualConcept"`
+	Mood             string   `json:"mood"`
+	ColorPalette     []string `json:"colorPalette"`
 	ForbiddenContent []string `json:"forbiddenContent,omitempty"`
 }
 
@@ -52,10 +53,12 @@ func now() string { return time.Now().Format(time.RFC3339) }
 
 // ImageProviderConfig bundles all the keys/models for image generation.
 type ImageProviderConfig struct {
-	OpenAIKey     string
-	OpenAIModel   string
-	GeminiKey     string
-	GeminiModel   string
+	OpenAIKey        string
+	OpenAIModel      string
+	OpenAIHTTPClient *http.Client
+	GeminiKey        string
+	GeminiModel      string
+	GeminiHTTPClient *http.Client
 }
 
 // RunCreativeGeneration runs the full pipeline: brief → directive → image prompt → image.
@@ -63,6 +66,7 @@ func RunCreativeGeneration(
 	ctx context.Context,
 	anthropicKey string,
 	claudeModel string,
+	anthropicHTTPClient *http.Client,
 	imgCfg ImageProviderConfig,
 	brief CreativeBrief,
 	onStep func(GenerationStep),
@@ -80,9 +84,16 @@ func RunCreativeGeneration(
 		return nil, fmt.Errorf("ANTHROPIC_API_KEY is not configured")
 	}
 
-	provider := NewImageProvider(imgCfg.OpenAIKey, imgCfg.OpenAIModel, imgCfg.GeminiKey, imgCfg.GeminiModel)
+	provider := NewImageProvider(
+		imgCfg.OpenAIKey,
+		imgCfg.OpenAIModel,
+		imgCfg.OpenAIHTTPClient,
+		imgCfg.GeminiKey,
+		imgCfg.GeminiModel,
+		imgCfg.GeminiHTTPClient,
+	)
 
-	client := newAnthropicClient(anthropicKey)
+	client := newAnthropicClient(anthropicKey, anthropicHTTPClient)
 
 	// ----- Step 1: Brief Agent -> structured directive -----
 	record("brief", "正在解析广告主需求...", "")

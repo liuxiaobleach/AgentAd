@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
 	"time"
 
 	"github.com/anthropics/anthropic-sdk-go"
@@ -21,11 +22,16 @@ var claudeOuterBackoffs = []time.Duration{
 	5 * time.Second,
 }
 
-func newAnthropicClient(apiKey string) anthropic.Client {
-	return anthropic.NewClient(
+func newAnthropicClient(apiKey string, httpClient *http.Client) anthropic.Client {
+	options := []option.RequestOption{
 		option.WithAPIKey(apiKey),
 		option.WithMaxRetries(claudeSDKMaxRetries),
-	)
+	}
+	if httpClient != nil {
+		options = append(options, option.WithHTTPClient(httpClient))
+	}
+
+	return anthropic.NewClient(options...)
 }
 
 func callClaudeMessageWithRetry(

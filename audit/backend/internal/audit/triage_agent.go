@@ -9,6 +9,7 @@ import (
 	"image"
 	"image/jpeg"
 	_ "image/png"
+	"net/http"
 	"net/url"
 	"strings"
 	"time"
@@ -278,14 +279,14 @@ func prepareImage(data []byte) (string, error) {
 	return base64.StdEncoding.EncodeToString(buf.Bytes()), nil
 }
 
-func executeToolCall(name string, input map[string]interface{}, projectName string) (interface{}, error) {
+func executeToolCall(name string, input map[string]interface{}, projectName string, httpClient *http.Client) (interface{}, error) {
 	switch name {
 	case "check_domain_reputation":
 		domain, _ := input["domain"].(string)
-		return tools.CheckDomainReputation(domain), nil
+		return tools.CheckDomainReputationWithClient(domain, httpClient), nil
 	case "trace_redirects":
 		url, _ := input["url"].(string)
-		return tools.TraceRedirects(url, 10), nil
+		return tools.TraceRedirectsWithClient(url, 10, httpClient), nil
 	case "check_telegram_link":
 		url, _ := input["url"].(string)
 		pn, _ := input["project_name"].(string)
@@ -511,8 +512,8 @@ func (s *qrToolCheckState) reminderMessage() string {
 	return strings.Join(lines, "\n")
 }
 
-func RunTriage(ctx context.Context, apiKey, model string, input TriageInput) (*TriageOutput, error) {
-	client := newAnthropicClient(apiKey)
+func RunTriage(ctx context.Context, apiKey, model string, input TriageInput, anthropicHTTPClient *http.Client, toolHTTPClient *http.Client) (*TriageOutput, error) {
+	client := newAnthropicClient(apiKey, anthropicHTTPClient)
 
 	evidences := []Evidence{}
 	thinkingSteps := []AgentThinkingStep{}
@@ -659,7 +660,7 @@ func RunTriage(ctx context.Context, apiKey, model string, input TriageInput) (*T
 				tc.Result = tu.Input
 				toolResults = append(toolResults, anthropic.NewToolResultBlock(tu.ID, "Findings recorded. Audit complete.", false))
 			} else {
-				result, err := executeToolCall(tu.Name, tu.Input, input.ProjectName)
+				result, err := executeToolCall(tu.Name, tu.Input, input.ProjectName, toolHTTPClient)
 				if err != nil {
 					tc.Error = err.Error()
 					errJSON, _ := json.Marshal(map[string]string{"error": err.Error()})
@@ -717,9 +718,14 @@ func RunTriage(ctx context.Context, apiKey, model string, input TriageInput) (*T
 			QRPayloads: qrResult.Payloads,
 			Contracts:  input.Contracts,
 		},
-		Evidences:     evidences,
-		Summary:       "Claude analysis completed without structured report.",
-		RiskScore:     func() float64 { if qrResult.Found { return 30 }; return 0 }(),
+		Evidences: evidences,
+		Summary:   "Claude analysis completed without structured report.",
+		RiskScore: func() float64 {
+			if qrResult.Found {
+				return 30
+			}
+			return 0
+		}(),
 		AgentThinking: thinkingSteps,
 	}, nil
 }

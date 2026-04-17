@@ -9,14 +9,14 @@ import (
 )
 
 type BidderInput struct {
-	AgentID        string                `json:"agentId"`
-	AdvertiserID   string                `json:"advertiserId"`
-	Strategy       string                `json:"strategy"`
-	StrategyPrompt string                `json:"strategyPrompt"`
-	ValuePerClick  float64               `json:"valuePerClick"`
-	MaxBidCpm      float64               `json:"maxBidCpm"`
-	BidRequest     BidRequestInfo        `json:"bidRequest"`
-	Candidates     []CandidateCreative   `json:"candidateCreatives"`
+	AgentID        string              `json:"agentId"`
+	AdvertiserID   string              `json:"advertiserId"`
+	Strategy       string              `json:"strategy"`
+	StrategyPrompt string              `json:"strategyPrompt"`
+	ValuePerClick  float64             `json:"valuePerClick"`
+	MaxBidCpm      float64             `json:"maxBidCpm"`
+	BidRequest     BidRequestInfo      `json:"bidRequest"`
+	Candidates     []CandidateCreative `json:"candidateCreatives"`
 }
 
 type BidRequestInfo struct {
@@ -29,10 +29,10 @@ type BidRequestInfo struct {
 }
 
 type CandidateCreative struct {
-	CreativeID      string                 `json:"creativeId"`
-	CreativeName    string                 `json:"creativeName"`
-	Profile         map[string]interface{} `json:"profile,omitempty"`
-	RecentStats     map[string]interface{} `json:"recentStats,omitempty"`
+	CreativeID   string                 `json:"creativeId"`
+	CreativeName string                 `json:"creativeName"`
+	Profile      map[string]interface{} `json:"profile,omitempty"`
+	RecentStats  map[string]interface{} `json:"recentStats,omitempty"`
 }
 
 type BidderOutput struct {
@@ -77,7 +77,7 @@ bid_cpm = predicted_ctr * value_per_click * 1000 * strategy_multiplier
 如果 participate=false，其他字段可以为空或零值，但 reason 必须解释原因。`
 
 func RunBidderAgent(ctx context.Context, apiKey, model string, input BidderInput) (*BidderOutput, error) {
-	client := newAnthropicClient(apiKey)
+	client := newAnthropicClient(apiKey, nil)
 
 	inputJSON, _ := json.MarshalIndent(input, "", "  ")
 	prompt := fmt.Sprintf(`以下是本次竞价的输入信息：

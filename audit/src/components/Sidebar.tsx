@@ -6,6 +6,7 @@ import { useAuth } from "@/lib/auth";
 
 const navItems = [
   { href: "/dashboard", label: "Dashboard", icon: "\u25C8" },
+  { href: "/billing", label: "Billing", icon: "\u25A0" },
   { href: "/creatives", label: "Creatives", icon: "\u25A3" },
   { href: "/audit-cases", label: "Audit Cases", icon: "\u25CE" },
   { href: "/bidder-agents", label: "Bidder Agents", icon: "\u2B23" },
@@ -19,6 +20,9 @@ const navItems = [
 export default function Sidebar({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const { user, logout, loading } = useAuth();
+  const walletLabel = user?.walletAddress
+    ? `${user.walletAddress.slice(0, 6)}...${user.walletAddress.slice(-4)}`
+    : "Wallet not linked";
 
   if (pathname === "/login") {
     return <>{children}</>;
@@ -121,6 +125,9 @@ export default function Sidebar({ children }: { children: React.ReactNode }) {
               <div>
                 <p className="text-sm font-medium" style={{ color: "#e2e8f0" }}>{user.name}</p>
                 <p className="text-[10px]" style={{ color: "#475569" }}>{user.email}</p>
+                <p className="text-[10px] font-mono mt-0.5" style={{ color: user.walletAddress ? "#22c55e" : "#64748b" }}>
+                  {walletLabel}
+                </p>
               </div>
             </div>
           </div>

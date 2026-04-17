@@ -28,6 +28,9 @@ export default function CreativeDetailPage() {
       const result = await res.json();
       if (res.ok) {
         router.push(`/audit-cases/${result.auditCaseId}`);
+      } else if (res.status === 402 && result.billingUrl) {
+        alert(result.error || "Insufficient balance");
+        router.push(result.billingUrl);
       } else {
         alert(result.error || "Submit failed");
       }

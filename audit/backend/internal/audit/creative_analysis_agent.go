@@ -4,17 +4,18 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/http"
 
 	"github.com/anthropics/anthropic-sdk-go"
 )
 
 type CreativeAnalysisInput struct {
-	CreativeID      string `json:"creativeId"`
-	CreativeURL     string `json:"creativeUrl"`
-	ProjectName     string `json:"projectName"`
-	LandingURL      string `json:"declaredLandingUrl"`
-	AuditSummary    string `json:"auditSummary"`
-	ImageBase64     string `json:"-"`
+	CreativeID   string `json:"creativeId"`
+	CreativeURL  string `json:"creativeUrl"`
+	ProjectName  string `json:"projectName"`
+	LandingURL   string `json:"declaredLandingUrl"`
+	AuditSummary string `json:"auditSummary"`
+	ImageBase64  string `json:"-"`
 }
 
 type CreativeAnalysisOutput struct {
@@ -72,8 +73,8 @@ const analysisSystemPrompt = `你是 ZKDSP 广告平台的素材分析 Agent。
 请用中文写 marketingSummary，标签和受众可以用英文。
 直接返回 JSON，不要包裹在代码块中。`
 
-func RunCreativeAnalysis(ctx context.Context, apiKey, model string, input CreativeAnalysisInput) (*CreativeAnalysisOutput, error) {
-	client := newAnthropicClient(apiKey)
+func RunCreativeAnalysis(ctx context.Context, apiKey, model string, input CreativeAnalysisInput, httpClient *http.Client) (*CreativeAnalysisOutput, error) {
+	client := newAnthropicClient(apiKey, httpClient)
 
 	contextText := fmt.Sprintf(`## 素材信息
 - 项目名：%s
