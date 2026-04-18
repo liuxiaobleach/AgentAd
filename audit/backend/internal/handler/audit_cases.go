@@ -7,7 +7,12 @@ import (
 )
 
 func (h *Handler) ListAuditCases(w http.ResponseWriter, r *http.Request) {
-	cases, err := h.Queries.ListAuditCases(r.Context())
+	claims := GetClaims(r.Context())
+	if claims == nil || claims.AdvertiserID == "" {
+		writeError(w, 401, "Not authenticated as advertiser")
+		return
+	}
+	cases, err := h.Queries.ListAuditCases(r.Context(), claims.AdvertiserID)
 	if err != nil {
 		writeError(w, 500, "Failed to list audit cases: "+err.Error())
 		return

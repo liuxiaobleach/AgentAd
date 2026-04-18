@@ -44,3 +44,9 @@ uploads/
 tmp/
 temp/
 *.tmp
+
+# Foundry
+audit/contracts/lib/
+audit/contracts/out/
+audit/contracts/cache/
+audit/contracts/broadcast/

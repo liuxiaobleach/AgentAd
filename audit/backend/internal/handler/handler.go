@@ -2,12 +2,14 @@ package handler
 
 import (
 	"encoding/json"
+	"log"
 	"net/http"
 	"sync"
 
 	"github.com/zkdsp/audit-backend/internal/audit"
 	"github.com/zkdsp/audit-backend/internal/config"
 	"github.com/zkdsp/audit-backend/internal/db"
+	"github.com/zkdsp/audit-backend/internal/onchain"
 	"github.com/zkdsp/audit-backend/internal/payments"
 )
 
@@ -24,15 +26,28 @@ type Handler struct {
 	Queries     *db.Queries
 	Config      *config.Config
 	Payments    *payments.BuyerFactory
-	generations sync.Map // creativeID -> *GenerationState
+	ClaimSigner *onchain.ClaimSigner // nil if issuer key / escrow not configured
+	generations sync.Map             // creativeID -> *GenerationState
 }
 
 func New(q *db.Queries, cfg *config.Config) *Handler {
-	return &Handler{
+	SetJWTSecret(cfg.JWTSecret)
+	h := &Handler{
 		Queries:  q,
 		Config:   cfg,
 		Payments: payments.NewBuyerFactory(cfg, q),
 	}
+	if cfg.IssuerPrivateKey != "" && cfg.BudgetEscrowAddress != "" {
+		signer, err := onchain.NewClaimSigner(cfg.IssuerPrivateKey, cfg.BudgetEscrowAddress, cfg.SepoliaChainID)
+		if err != nil {
+			log.Printf("[claim] signer disabled: %v", err)
+		} else {
+			h.ClaimSigner = signer
+			log.Printf("[claim] signer ready issuer=%s escrow=%s chain=%d",
+				signer.IssuerAddress().Hex(), signer.EscrowAddress().Hex(), signer.ChainID())
+		}
+	}
+	return h
 }
 
 func (h *Handler) SetGenerationState(id string, state *GenerationState) {

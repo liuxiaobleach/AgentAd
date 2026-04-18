@@ -129,6 +129,7 @@ npm run dev
 DATABASE_URL=postgresql://postgres:YOUR_PASSWORD@localhost:5432/zkdsp_audit?sslmode=disable
 ANTHROPIC_API_KEY=sk-ant-...
 AUDIT_MODEL=claude-sonnet-4-20250514   # 可切换到 claude-opus / claude-haiku
+JWT_SECRET=change-me-to-a-long-random-secret-at-least-32-chars
 UPLOAD_DIR=./uploads
 PORT=8080
 REGISTRY_ADDRESS=0x...                 # 合约地址（目前占位）
@@ -212,6 +213,40 @@ PGPASSWORD=YOUR_PASSWORD psql -U postgres -d zkdsp_audit -f backend/migrations/0
 # Go 后端重新构建
 cd backend && go build -o /tmp/zkdsp-audit-server ./cmd/server
 ```
+
+---
+
+## M1：链上预存 + Publisher 签名领取（已上线）
+
+本仓库已经跑通 M1 完整资金闭环：
+
+- **广告主侧**：前端 `/billing` 走两步 MetaMask 流程 —— `USDC.approve(escrow, amount)` → `BudgetEscrow.deposit(amount)`。合约 `deposits[addr]` 真实累加，后端监听 `Transfer(from, escrow)` 把 on-chain 存款同步到 `advertiser_balances` 作可花费余额。
+- **Publisher 侧**：前端 `/publisher/login` 登录 → `/publisher/dashboard` 查看累计收益 + 单事件流水。拍卖 winner settle 时 `publisher_earning_events` 按 slot 归属自动累计（默认落到 `pub_demo`）。
+- **链上领取**：Publisher 在前端点 "Prepare + Submit Claim" → 后端用 issuer 私钥签 EIP-712 `ClaimReceipt(address publisher, uint256 amount, bytes32 receiptId, uint256 expiry)` → 前端把 receipt 提交给 `BudgetEscrow.claim()`，合约验签后把 USDC 发到 publisher 钱包。`usedReceipts` 防重放，`expiry` 防过期。
+
+### 关键新增
+
+| 组件 | 位置 |
+|------|------|
+| 合约 | `contracts/src/BudgetEscrow.sol`（deposit + claim，EIP-712 issuer，9/9 tests） |
+| Sepolia 部署 | escrow = `0x84157B99209580675ebD3F9058ed57dAB93794FD`，chainId `11155111` |
+| 迁移 | `backend/migrations/006_publishers.sql`（publishers / publisher_slots / publisher_earnings / publisher_earning_events / claim_receipts） |
+| Publisher 登录 | `POST /api/publisher/auth/login` → JWT role=publisher |
+| Publisher API | `GET /api/publisher/billing/wallet`，`POST /api/publisher/billing/wallet/link`，`GET /api/publisher/earnings`，`GET /api/publisher/earnings/events`，`POST /api/publisher/claim/prepare`，`POST /api/publisher/claim/confirm`，`GET /api/publisher/claims` |
+| 签名器 | `backend/internal/onchain/claim_signer.go`（OpenZeppelin EIP712 兼容，test 通过签名 → 恢复 == IssuerAddress 验证） |
+| Settlement hook | `backend/internal/handler/simulation.go` 的 `creditPublisher()`，在 impression + click 结算时各记一笔 `publisher_earning_event` |
+| Demo 账号 | Publisher：`publisher@agentad.demo` / `demo123`（通过 migration 006 自动种子） |
+
+### M1 新增环境变量
+
+```bash
+BUDGET_ESCROW_ADDRESS=0x84157B99209580675ebD3F9058ed57dAB93794FD
+ISSUER_ADDRESS=0xFd2FC8b0990590Dfd06CD297177097e0d1bf616a
+ISSUER_PRIVATE_KEY=0x...        # 对应 issuer 的私钥，后端独占
+SEPOLIA_TREASURY_ADDRESS=0x84157B99209580675ebD3F9058ed57dAB93794FD  # == escrow
+```
+
+后续 M2/M3（Merkle commit + zkVM 聚合证明）未开工，留给下一阶段。
 
 ---
 

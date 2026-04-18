@@ -141,17 +141,23 @@ func planCreativeDirective(
 
 输出严格的 JSON（不要任何额外文字），结构如下：
 {
-  "headline": "主标题（≤10 个汉字或 ≤30 英文字符，抓住核心卖点）",
-  "subheadline": "辅助文案（≤20 个汉字）",
-  "callToAction": "行动号召（≤8 个字，例如 立即体验）",
-  "visualConcept": "视觉概念描述（画面主体、构图、氛围）",
-  "mood": "情绪/调性，例如 充满未来感的科技光晕",
+  "headline": "主标题，必须为英文，≤4 个单词、≤30 字符，抓住核心卖点（会直接渲染到图片上）",
+  "subheadline": "辅助文案，必须为英文，≤8 个单词（会直接渲染到图片上）",
+  "callToAction": "行动号召，必须为英文，≤3 个单词，例如 Get Started / Try Now / Join Beta（会直接渲染到图片上）",
+  "visualConcept": "视觉概念描述（画面主体、构图、氛围），可用中文",
+  "mood": "情绪/调性，例如 充满未来感的科技光晕，可用中文",
   "colorPalette": ["主色描述", "辅色描述", "点缀色描述"],
   "forbiddenContent": ["禁止出现的元素列表，例如 真人肖像、知名商标、暴力"]
 }
 
-要求：
-1. 文案要有吸引力，但不得含有"100% 收益 / 保证赚钱 / 点此领取"这类诱导性话术。
+文案语言要求（非常重要）：
+- headline / subheadline / callToAction 三个字段必须是英文，因为图像模型对中文字符渲染效果极差。
+- 即使广告主的需求是中文，也要把中文意图翻译/改写成自然地道的英文广告文案，而不是直译。
+- 保留品牌名（项目名）的原始拼写（无论中英文均照搬）。
+- 其他字段（visualConcept / mood / colorPalette / forbiddenContent）可以继续用中文，它们只用于指导构图，不会出现在图像上。
+
+文案质量要求：
+1. 有吸引力，但不得含有 "100% return / guaranteed profit / click to claim" 这类诱导性话术。
 2. Web3 / DeFi 项目不要编造具体收益数字。
 3. 视觉概念与品牌名相符。`
 
@@ -214,9 +220,13 @@ func buildImagePrompt(
 输出规范：
 - 纯英文，单一段落，200 词以内
 - 描述画面主体、构图、光影、色调、风格流派、质感、氛围
-- 显式要求画面中以大号、清晰、无乱码的字体渲染标题与 CTA 文字（只能英文或广告主提供的中文）
+- 画面中渲染的所有文字必须是英文，直接引用 directive 中的 headline / subheadline / callToAction 原字符串，不得改写、不得加入其他文字、不得出现任何中文字符或非拉丁字符
+- 强调字体清晰、拼写正确、无乱码、高对比度、大号字号、留足背景空间
 - 不得出现真人、知名商标、政治符号
 - 适合广告使用，品牌化、干净、专业
+
+文字渲染提示词示例（请在 prompt 中体现）：
+"with the exact English text 'HEADLINE HERE' rendered in a large, bold, clean sans-serif font, perfectly legible, no misspellings, no extra characters, no non-Latin glyphs"
 
 只输出 prompt 文本，不要任何解释或前后缀。`
 

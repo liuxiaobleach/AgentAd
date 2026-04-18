@@ -6,13 +6,17 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"strings"
 	"time"
+
+	"golang.org/x/crypto/bcrypt"
 )
 
-// Simple JWT-like token (HMAC-SHA256, no external deps)
-var jwtSecret = []byte("zkdsp-audit-jwt-secret-change-in-prod")
+// Simple JWT-like token (HMAC-SHA256, no external deps).
+// The secret is injected from backend config during handler initialization.
+var jwtSecret []byte
 
 type LoginRequest struct {
 	Email    string `json:"email"`
@@ -30,11 +34,16 @@ type LoginResponse struct {
 }
 
 type TokenClaims struct {
-	AdvertiserID string `json:"sub"`
+	AdvertiserID string `json:"sub"`           // advertiser id, "" for publisher tokens
+	PublisherID  string `json:"pub,omitempty"` // publisher id, "" for advertiser tokens
 	Email        string `json:"email"`
 	Name         string `json:"name"`
+	Role         string `json:"role,omitempty"` // "advertiser" (default/empty) | "publisher"
 	Exp          int64  `json:"exp"`
 }
+
+// IsPublisher is true when the token was issued to a publisher account.
+func (c *TokenClaims) IsPublisher() bool { return c.Role == "publisher" }
 
 func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 	var req LoginRequest
@@ -55,7 +64,7 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// For MVP: simple password check (demo123 for both accounts)
+	// Compare the submitted password against the stored bcrypt hash.
 	if !checkPassword(req.Password, adv.PasswordHash) {
 		writeError(w, 401, "Invalid email or password")
 		return
@@ -66,6 +75,7 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 		AdvertiserID: adv.ID,
 		Email:        adv.ContactEmail,
 		Name:         adv.Name,
+		Role:         "advertiser",
 		Exp:          time.Now().Add(24 * time.Hour).Unix(),
 	}
 	token, err := signToken(claims)
@@ -137,14 +147,30 @@ func GetClaims(ctx context.Context) *TokenClaims {
 	return claims
 }
 
-// Simple password check: for MVP we use a hardcoded check
-// In production, use bcrypt
+func SetJWTSecret(secret string) {
+	jwtSecret = []byte(strings.TrimSpace(secret))
+}
+
+func requireJWTSecret() error {
+	if len(jwtSecret) == 0 {
+		return errors.New("JWT secret is not configured")
+	}
+	return nil
+}
+
+// Passwords are stored as bcrypt hashes in seeded migrations and DB records.
 func checkPassword(password string, hash *string) bool {
-	// For the seeded accounts, password is "demo123"
-	return password == "demo123"
+	if hash == nil || strings.TrimSpace(*hash) == "" {
+		return false
+	}
+	return bcrypt.CompareHashAndPassword([]byte(*hash), []byte(password)) == nil
 }
 
 func signToken(claims TokenClaims) (string, error) {
+	if err := requireJWTSecret(); err != nil {
+		return "", err
+	}
+
 	payload, err := json.Marshal(claims)
 	if err != nil {
 		return "", err
@@ -162,6 +188,10 @@ func signToken(claims TokenClaims) (string, error) {
 }
 
 func verifyToken(token string) (*TokenClaims, error) {
+	if err := requireJWTSecret(); err != nil {
+		return nil, err
+	}
+
 	parts := strings.Split(token, ".")
 	if len(parts) != 3 {
 		return nil, http.ErrNotSupported

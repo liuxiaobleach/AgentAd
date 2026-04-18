@@ -66,17 +66,40 @@ func (h *Handler) RequestAdSlot(w http.ResponseWriter, r *http.Request) {
 
 // TrackAdClick is a public endpoint that marks an auction as clicked by a real user.
 // Called from ad-test.html (or any publisher) when the ad is clicked.
+//
+// Side effect: charges the winning agent's value_per_click from the advertiser
+// balance. Idempotency is provided by MarkAuctionClickedIfNotClicked — a
+// second call on the same auction will not double-charge.
 func (h *Handler) TrackAdClick(w http.ResponseWriter, r *http.Request) {
 	auctionID := chi.URLParam(r, "id")
 	if auctionID == "" {
 		writeError(w, 400, "Missing auction ID")
 		return
 	}
-	if err := h.Queries.MarkAuctionClicked(r.Context(), auctionID); err != nil {
+
+	firstClick, err := h.Queries.MarkAuctionClickedIfNotClicked(r.Context(), auctionID)
+	if err != nil {
 		writeError(w, 500, "Failed to record click: "+err.Error())
 		return
 	}
-	writeJSON(w, 200, map[string]interface{}{"ok": true})
+
+	if firstClick {
+		// Look up the winning agent so we can capture value_per_click.
+		ar, err := h.Queries.GetAuctionRequestWithDetails(r.Context(), auctionID)
+		if err == nil && ar.Result != nil && ar.Result.WinnerBidID != nil {
+			for _, b := range ar.Bids {
+				if b.ID == *ar.Result.WinnerBidID {
+					agent, err := h.Queries.GetBidderAgent(r.Context(), b.BidderAgentID)
+					if err == nil {
+						h.chargeClick(r.Context(), agent, auctionID, b.ID, ar.SlotID)
+					}
+					break
+				}
+			}
+		}
+	}
+
+	writeJSON(w, 200, map[string]interface{}{"ok": true, "charged": firstClick})
 }
 
 // GetAdSlotResult is a public endpoint to poll for auction result.

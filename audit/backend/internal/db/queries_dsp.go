@@ -151,11 +151,24 @@ func (q *Queries) CreateCreativeProfile(ctx context.Context, p CreativeProfile) 
 // Bidder Agents
 // ---------------------------------------------------------------------------
 
+const bidderAgentSelectCols = `id, advertiser_id, name, strategy, strategy_prompt,
+	value_per_click, max_bid_cpm, daily_budget_atomic, hourly_budget_atomic,
+	status, created_at, updated_at`
+
+func scanBidderAgent(row interface {
+	Scan(dest ...any) error
+}) (BidderAgent, error) {
+	var a BidderAgent
+	err := row.Scan(
+		&a.ID, &a.AdvertiserID, &a.Name, &a.Strategy, &a.StrategyPrompt,
+		&a.ValuePerClick, &a.MaxBidCpm, &a.DailyBudgetAtomic, &a.HourlyBudgetAtomic,
+		&a.Status, &a.CreatedAt, &a.UpdatedAt,
+	)
+	return a, err
+}
+
 func (q *Queries) GetBidderAgentsByAdvertiser(ctx context.Context, advertiserID string) ([]BidderAgent, error) {
-	const sql = `
-		SELECT id, advertiser_id, name, strategy, strategy_prompt,
-		       value_per_click, max_bid_cpm, status, created_at, updated_at
-		FROM bidder_agents WHERE advertiser_id = $1 ORDER BY created_at`
+	sql := `SELECT ` + bidderAgentSelectCols + ` FROM bidder_agents WHERE advertiser_id = $1 ORDER BY created_at`
 	rows, err := q.Pool.Query(ctx, sql, advertiserID)
 	if err != nil {
 		return nil, err
@@ -164,11 +177,8 @@ func (q *Queries) GetBidderAgentsByAdvertiser(ctx context.Context, advertiserID 
 
 	var agents []BidderAgent
 	for rows.Next() {
-		var a BidderAgent
-		if err := rows.Scan(
-			&a.ID, &a.AdvertiserID, &a.Name, &a.Strategy, &a.StrategyPrompt,
-			&a.ValuePerClick, &a.MaxBidCpm, &a.Status, &a.CreatedAt, &a.UpdatedAt,
-		); err != nil {
+		a, err := scanBidderAgent(rows)
+		if err != nil {
 			return nil, err
 		}
 		agents = append(agents, a)
@@ -177,19 +187,8 @@ func (q *Queries) GetBidderAgentsByAdvertiser(ctx context.Context, advertiserID 
 }
 
 func (q *Queries) GetBidderAgent(ctx context.Context, id string) (BidderAgent, error) {
-	const sql = `
-		SELECT id, advertiser_id, name, strategy, strategy_prompt,
-		       value_per_click, max_bid_cpm, status, created_at, updated_at
-		FROM bidder_agents WHERE id = $1`
-	var a BidderAgent
-	err := q.Pool.QueryRow(ctx, sql, id).Scan(
-		&a.ID, &a.AdvertiserID, &a.Name, &a.Strategy, &a.StrategyPrompt,
-		&a.ValuePerClick, &a.MaxBidCpm, &a.Status, &a.CreatedAt, &a.UpdatedAt,
-	)
-	if err != nil {
-		return BidderAgent{}, err
-	}
-	return a, nil
+	sql := `SELECT ` + bidderAgentSelectCols + ` FROM bidder_agents WHERE id = $1`
+	return scanBidderAgent(q.Pool.QueryRow(ctx, sql, id))
 }
 
 func (q *Queries) UpdateBidderAgent(ctx context.Context, id string, strategy string, strategyPrompt *string, vpc, maxBid float64) error {
@@ -201,11 +200,19 @@ func (q *Queries) UpdateBidderAgent(ctx context.Context, id string, strategy str
 	return err
 }
 
-func (q *Queries) GetAllActiveBidderAgents(ctx context.Context) ([]BidderAgent, error) {
+func (q *Queries) UpdateBidderAgentBudget(ctx context.Context, id string, dailyBudgetAtomic, hourlyBudgetAtomic int64) error {
 	const sql = `
-		SELECT id, advertiser_id, name, strategy, strategy_prompt,
-		       value_per_click, max_bid_cpm, status, created_at, updated_at
-		FROM bidder_agents WHERE status = 'ACTIVE' ORDER BY created_at`
+		UPDATE bidder_agents
+		SET daily_budget_atomic = $1,
+		    hourly_budget_atomic = $2,
+		    updated_at = NOW()
+		WHERE id = $3`
+	_, err := q.Pool.Exec(ctx, sql, dailyBudgetAtomic, hourlyBudgetAtomic, id)
+	return err
+}
+
+func (q *Queries) GetAllActiveBidderAgents(ctx context.Context) ([]BidderAgent, error) {
+	sql := `SELECT ` + bidderAgentSelectCols + ` FROM bidder_agents WHERE status = 'ACTIVE' ORDER BY created_at`
 	rows, err := q.Pool.Query(ctx, sql)
 	if err != nil {
 		return nil, err
@@ -214,11 +221,8 @@ func (q *Queries) GetAllActiveBidderAgents(ctx context.Context) ([]BidderAgent, 
 
 	var agents []BidderAgent
 	for rows.Next() {
-		var a BidderAgent
-		if err := rows.Scan(
-			&a.ID, &a.AdvertiserID, &a.Name, &a.Strategy, &a.StrategyPrompt,
-			&a.ValuePerClick, &a.MaxBidCpm, &a.Status, &a.CreatedAt, &a.UpdatedAt,
-		); err != nil {
+		a, err := scanBidderAgent(rows)
+		if err != nil {
 			return nil, err
 		}
 		agents = append(agents, a)
@@ -469,6 +473,28 @@ func (q *Queries) MarkAuctionClicked(ctx context.Context, auctionRequestID strin
 	const sql = `UPDATE auction_results SET clicked = true WHERE auction_request_id = $1`
 	_, err := q.Pool.Exec(ctx, sql, auctionRequestID)
 	return err
+}
+
+// MarkAuctionClickedIfNotClicked is an idempotent variant of MarkAuctionClicked.
+// It returns true when this call is the one that actually flipped clicked from
+// false to true (i.e. the "first click"), false otherwise. Callers use this to
+// guarantee per-auction click-charge uniqueness at the database level, so
+// repeated sendBeacon fires do not double-charge the advertiser.
+func (q *Queries) MarkAuctionClickedIfNotClicked(ctx context.Context, auctionRequestID string) (bool, error) {
+	const sql = `
+		UPDATE auction_results
+		SET clicked = true
+		WHERE auction_request_id = $1 AND clicked = false
+		RETURNING id`
+	var id string
+	err := q.Pool.QueryRow(ctx, sql, auctionRequestID).Scan(&id)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return false, nil
+		}
+		return false, err
+	}
+	return true, nil
 }
 
 type AuctionListRow struct {

@@ -17,6 +17,9 @@ import (
 
 func main() {
 	cfg := config.Load()
+	if err := cfg.Validate(); err != nil {
+		log.Fatalf("invalid config: %v", err)
+	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
@@ -47,11 +50,13 @@ func main() {
 
 	// Public routes (no auth)
 	r.Post("/api/auth/login", h.Login)
+	r.Post("/api/publisher/auth/login", h.PublisherLogin)
 	r.Post("/api/sdk/verify", h.SDKVerify)
 	r.Get("/api/manifests/{id}", h.GetManifest)
 	r.Post("/api/ad-slot/request", h.RequestAdSlot)
 	r.Get("/api/ad-slot/result/{id}", h.GetAdSlotResult)
 	r.Post("/api/ad-slot/click/{id}", h.TrackAdClick)
+	r.Post("/api/assistant/chat", h.AssistantChat)
 
 	// Protected routes (require JWT)
 	r.Group(func(r chi.Router) {
@@ -104,6 +109,26 @@ func main() {
 
 		// Certificates
 		r.Get("/api/certificates", h.ListCertificates)
+
+		// Support tickets (works for advertisers + publishers)
+		r.Post("/api/support/tickets", h.CreateSupportTicket)
+		r.Get("/api/support/tickets", h.ListSupportTickets)
+		r.Get("/api/support/tickets/{id}", h.GetSupportTicket)
+		r.Post("/api/support/tickets/{id}/messages", h.AppendSupportMessage)
+
+		// Publisher-only routes
+		r.Group(func(r chi.Router) {
+			r.Use(handler.RequirePublisherMiddleware)
+			r.Get("/api/publisher/me", h.GetPublisherMe)
+			r.Get("/api/publisher/billing/wallet", h.GetPublisherBillingWallet)
+			r.Get("/api/publisher/billing/wallet/link-challenge", h.GetPublisherWalletLinkChallenge)
+			r.Post("/api/publisher/billing/wallet/link", h.LinkPublisherWallet)
+			r.Get("/api/publisher/earnings", h.GetPublisherEarnings)
+			r.Get("/api/publisher/earnings/events", h.ListPublisherEarningEvents)
+			r.Post("/api/publisher/claim/prepare", h.PreparePublisherClaim)
+			r.Post("/api/publisher/claim/confirm", h.ConfirmPublisherClaim)
+			r.Get("/api/publisher/claims", h.ListPublisherClaims)
+		})
 	})
 
 	// Static uploads

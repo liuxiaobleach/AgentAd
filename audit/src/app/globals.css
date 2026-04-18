@@ -204,6 +204,37 @@ main {
   text-shadow: 0 0 10px rgba(226, 232, 240, 0.2);
 }
 
+/* ---- Claim flow animations ---- */
+@keyframes claim-spin {
+  to { transform: rotate(360deg); }
+}
+@keyframes claim-pulse-ring {
+  0%   { box-shadow: 0 0 0 0 rgba(6, 182, 212, 0.55); }
+  70%  { box-shadow: 0 0 0 10px rgba(6, 182, 212, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(6, 182, 212, 0); }
+}
+@keyframes claim-check-draw {
+  from { stroke-dashoffset: 24; }
+  to   { stroke-dashoffset: 0; }
+}
+@keyframes claim-bar-indeterminate {
+  0%   { transform: translateX(-100%); }
+  100% { transform: translateX(400%); }
+}
+@keyframes claim-pill-reveal {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes claim-confetti-fall {
+  0%   { transform: translate3d(var(--cx, 0), -20px, 0) rotate(0deg); opacity: 1; }
+  100% { transform: translate3d(var(--dx, 0), 110vh, 0) rotate(var(--rot, 720deg)); opacity: 0; }
+}
+.claim-check-path {
+  stroke-dasharray: 24;
+  stroke-dashoffset: 24;
+  animation: claim-check-draw 400ms ease-out forwards;
+}
+
 /* ---- Risk score colors in dark mode ---- */
 .bg-green-100.text-green-800 {
   background-color: rgba(16, 185, 129, 0.15) !important;

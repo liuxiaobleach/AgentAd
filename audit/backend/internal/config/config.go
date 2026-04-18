@@ -1,21 +1,26 @@
 package config
 
 import (
+	"fmt"
 	"os"
 	"strconv"
 	"strings"
 )
 
+const exampleJWTSecret = "change-me-to-a-long-random-secret-at-least-32-chars"
+
 type Config struct {
 	DatabaseURL      string
 	AnthropicAPIKey  string
 	AuditModel       string
+	AssistantModel   string
 	OpenAIAPIKey     string
 	ImageModel       string
 	GeminiAPIKey     string
 	GeminiImageModel string
 	UploadDir        string
 	Port             string
+	JWTSecret        string
 	RegistryAddress  string
 	IssuerAddress    string
 	AllowedOrigins   string
@@ -34,6 +39,15 @@ type Config struct {
 	SepoliaUSDCAddress     string
 	SepoliaTreasuryAddress string
 	SepoliaExplorerBaseURL string
+
+	// BudgetEscrow contract deployment. Escrow doubles as the deposit
+	// target (advertisers deposit here) and the claim target (publishers
+	// call claim() with an EIP-712 receipt). For clean upgrades the
+	// treasury address above is kept identical to the escrow address.
+	BudgetEscrowAddress string
+	// Issuer key signs EIP-712 claim receipts. Keep in backend-only secret;
+	// never expose to clients.
+	IssuerPrivateKey string
 }
 
 func Load() *Config {
@@ -41,12 +55,14 @@ func Load() *Config {
 		DatabaseURL:               getEnv("DATABASE_URL", ""),
 		AnthropicAPIKey:           getEnv("ANTHROPIC_API_KEY", ""),
 		AuditModel:                getEnv("AUDIT_MODEL", "claude-sonnet-4-20250514"),
+		AssistantModel:            getEnv("ASSISTANT_MODEL", "claude-haiku-4-5"),
 		OpenAIAPIKey:              getEnv("OPENAI_API_KEY", ""),
 		ImageModel:                getEnv("IMAGE_MODEL", "dall-e-3"),
 		GeminiAPIKey:              getEnv("GEMINI_API_KEY", ""),
 		GeminiImageModel:          getEnv("GEMINI_IMAGE_MODEL", "imagen-4.0-fast-generate-001"),
 		UploadDir:                 getEnv("UPLOAD_DIR", "./uploads"),
 		Port:                      getEnv("PORT", "8080"),
+		JWTSecret:                 getEnv("JWT_SECRET", ""),
 		RegistryAddress:           getEnv("REGISTRY_ADDRESS", "0x0000000000000000000000000000000000000000"),
 		IssuerAddress:             getEnv("ISSUER_ADDRESS", "0x0000000000000000000000000000000000000000"),
 		AllowedOrigins:            getEnv("ALLOWED_ORIGINS", "http://localhost:3000"),
@@ -63,7 +79,23 @@ func Load() *Config {
 		SepoliaUSDCAddress:        getEnv("SEPOLIA_USDC_ADDRESS", "0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238"),
 		SepoliaTreasuryAddress:    getEnv("SEPOLIA_TREASURY_ADDRESS", ""),
 		SepoliaExplorerBaseURL:    getEnv("SEPOLIA_EXPLORER_BASE_URL", "https://sepolia.etherscan.io/tx/"),
+		BudgetEscrowAddress:       getEnv("BUDGET_ESCROW_ADDRESS", ""),
+		IssuerPrivateKey:          getEnv("ISSUER_PRIVATE_KEY", ""),
 	}
+}
+
+func (c *Config) Validate() error {
+	secret := strings.TrimSpace(c.JWTSecret)
+	if secret == "" {
+		return fmt.Errorf("JWT_SECRET is required")
+	}
+	if len(secret) < 32 {
+		return fmt.Errorf("JWT_SECRET must be at least 32 characters")
+	}
+	if secret == exampleJWTSecret || secret == "zkdsp-audit-jwt-secret-change-in-prod" {
+		return fmt.Errorf("JWT_SECRET must not use the example or legacy hardcoded value")
+	}
+	return nil
 }
 
 func getEnv(key, fallback string) string {

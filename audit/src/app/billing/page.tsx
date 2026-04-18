@@ -42,9 +42,27 @@ type BillingWallet = {
   tokenSymbol: string;
   tokenDecimals: number;
   tokenAddress: string;
-  treasuryAddress: string;
+  treasuryAddress: string; // this is the BudgetEscrow contract address
   explorerBaseUrl: string;
 };
+
+// Minimal BudgetEscrow ABI — we only need deposit(amount).
+const budgetEscrowAbi = [
+  {
+    type: "function",
+    name: "deposit",
+    stateMutability: "nonpayable",
+    inputs: [{ name: "amount", type: "uint256" }],
+    outputs: [],
+  },
+  {
+    type: "function",
+    name: "deposits",
+    stateMutability: "view",
+    inputs: [{ name: "advertiser", type: "address" }],
+    outputs: [{ name: "", type: "uint256" }],
+  },
+] as const;
 
 type WalletLinkChallenge = {
   message: string;
@@ -371,8 +389,17 @@ export default function BillingPage() {
 
       await ensureSepoliaWalletNetwork(ethereum, wallet);
 
-      setStatus("Waiting for MetaMask transfer confirmation...");
-      const txHash = (await ethereum.request({
+      const publicClient = createPublicClient({
+        chain: sepolia,
+        transport: http(wallet.rpcUrl),
+      });
+
+      // Step 1/2: approve USDC allowance for the BudgetEscrow contract. This
+      // is required because escrow.deposit() pulls via transferFrom. We
+      // always issue a fresh approve — no legacy "max approval" pattern; keep
+      // the amount tight.
+      setStatus("Step 1/2: approve Sepolia USDC allowance in MetaMask...");
+      const approveTxHash = (await ethereum.request({
         method: "eth_sendTransaction",
         params: [
           {
@@ -380,8 +407,31 @@ export default function BillingPage() {
             to: wallet.tokenAddress,
             data: encodeFunctionData({
               abi: erc20Abi,
-              functionName: "transfer",
+              functionName: "approve",
               args: [wallet.treasuryAddress as Address, amountAtomic],
+            }),
+          },
+        ],
+      })) as string;
+      setStatus("Step 1/2: waiting for approve tx confirmation...");
+      await publicClient.waitForTransactionReceipt({
+        hash: approveTxHash as `0x${string}`,
+      });
+
+      // Step 2/2: call escrow.deposit(amount). The contract pulls the tokens
+      // via transferFrom (which emits the ERC20 Transfer event the backend
+      // verifier watches for) and bumps deposits[msg.sender].
+      setStatus("Step 2/2: send deposit() tx to the escrow contract...");
+      const txHash = (await ethereum.request({
+        method: "eth_sendTransaction",
+        params: [
+          {
+            from: normalizedConnectedWallet,
+            to: wallet.treasuryAddress,
+            data: encodeFunctionData({
+              abi: budgetEscrowAbi,
+              functionName: "deposit",
+              args: [amountAtomic],
             }),
           },
         ],
@@ -389,17 +439,12 @@ export default function BillingPage() {
 
       setLastTxHash(txHash);
       setManualTxHash(txHash);
-      setStatus("Sepolia transaction sent. Waiting for on-chain confirmation...");
-
-      const publicClient = createPublicClient({
-        chain: sepolia,
-        transport: http(wallet.rpcUrl),
-      });
+      setStatus("Step 2/2: waiting for deposit tx confirmation...");
       await publicClient.waitForTransactionReceipt({
         hash: txHash as `0x${string}`,
       });
 
-      setStatus("Transaction confirmed. Crediting your platform balance...");
+      setStatus("Deposit confirmed on-chain. Crediting your platform balance...");
       await claimDeposit(txHash);
       setStatus("Sepolia USDC deposit credited successfully.");
     } catch (err: any) {
@@ -438,7 +483,9 @@ export default function BillingPage() {
         <div>
           <h2 className="text-2xl font-bold text-slate-900">Billing</h2>
           <p className="mt-2 max-w-3xl text-sm text-slate-500">
-            This console now uses real Sepolia USDC for advertiser top-ups. Connect MetaMask, link the wallet you want to fund from, send USDC to the platform treasury, and then claim the on-chain transfer into your prepaid balance.
+            Top-ups use a two-step on-chain flow: approve USDC allowance, then call{" "}
+            <code>BudgetEscrow.deposit()</code>. The contract records your deposit in{" "}
+            <code>deposits[addr]</code> and this console credits your spendable balance after confirmation.
           </p>
         </div>
       </div>
@@ -487,7 +534,7 @@ export default function BillingPage() {
 
           <div className="space-y-4 rounded-2xl border border-slate-200 bg-slate-50 p-4">
             <DetailRow
-              label="Treasury"
+              label="Budget Escrow"
               value={wallet?.treasuryAddress || "Loading..."}
             />
             <DetailRow
@@ -561,8 +608,12 @@ export default function BillingPage() {
               disabled={depositBusy || walletBusy || !wallet}
               className="mt-4 w-full rounded-xl bg-emerald-600 px-4 py-3 text-sm font-medium text-white transition hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-60"
             >
-              {depositBusy ? "Processing Deposit..." : "Send Sepolia USDC with MetaMask"}
+              {depositBusy ? "Processing Deposit..." : "Approve + Deposit with MetaMask"}
             </button>
+            <p className="mt-2 text-xs text-slate-500">
+              Two transactions: (1) <code>USDC.approve(escrow, amount)</code> then (2){" "}
+              <code>escrow.deposit(amount)</code>. MetaMask will prompt twice.
+            </p>
             <p className="mt-3 text-xs text-slate-500">
               Need test funds? Grab Sepolia ETH and test USDC from{" "}
               <a

@@ -389,8 +389,10 @@ func (q *Queries) UpdateCreativeStatus(ctx context.Context, id string, status Cr
 
 // ListAuditCases returns all audit cases with a creative summary and
 // attestation joined.
-func (q *Queries) ListAuditCases(ctx context.Context) ([]AuditCase, error) {
-	const sql = `
+// ListAuditCases returns audit cases, optionally scoped to a single
+// advertiser. Pass an empty advertiserID to return all cases (ops/admin view).
+func (q *Queries) ListAuditCases(ctx context.Context, advertiserID string) ([]AuditCase, error) {
+	base := `
 		SELECT
 			ac.id, ac.creative_id, ac.status, ac.risk_score, ac.decision,
 			ac.policy_version, ac.summary, ac.agent_thinking,
@@ -401,10 +403,19 @@ func (q *Queries) ListAuditCases(ctx context.Context) ([]AuditCase, error) {
 			att.issued_at, att.expires_at, att.created_at
 		FROM audit_cases ac
 		JOIN creatives c ON c.id = ac.creative_id
-		LEFT JOIN attestations att ON att.audit_case_id = ac.id
-		ORDER BY ac.submitted_at DESC`
+		LEFT JOIN attestations att ON att.audit_case_id = ac.id`
 
-	rows, err := q.Pool.Query(ctx, sql)
+	var (
+		rows pgx.Rows
+		err  error
+	)
+	if advertiserID == "" {
+		rows, err = q.Pool.Query(ctx, base+` ORDER BY ac.submitted_at DESC`)
+	} else {
+		rows, err = q.Pool.Query(ctx,
+			base+` WHERE c.advertiser_id = $1 ORDER BY ac.submitted_at DESC`,
+			advertiserID)
+	}
 	if err != nil {
 		return nil, fmt.Errorf("list audit cases: %w", err)
 	}

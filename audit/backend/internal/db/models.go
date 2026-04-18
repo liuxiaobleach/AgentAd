@@ -189,16 +189,18 @@ type CreativeProfile struct {
 }
 
 type BidderAgent struct {
-	ID             string            `json:"id"`
-	AdvertiserID   string            `json:"advertiserId"`
-	Name           string            `json:"name"`
-	Strategy       string            `json:"strategy"`
-	StrategyPrompt *string           `json:"strategyPrompt"`
-	ValuePerClick  float64           `json:"valuePerClick"`
-	MaxBidCpm      float64           `json:"maxBidCpm"`
-	Status         BidderAgentStatus `json:"status"`
-	CreatedAt      time.Time         `json:"createdAt"`
-	UpdatedAt      time.Time         `json:"updatedAt"`
+	ID                 string            `json:"id"`
+	AdvertiserID       string            `json:"advertiserId"`
+	Name               string            `json:"name"`
+	Strategy           string            `json:"strategy"`
+	StrategyPrompt     *string           `json:"strategyPrompt"`
+	ValuePerClick      float64           `json:"valuePerClick"`
+	MaxBidCpm          float64           `json:"maxBidCpm"`
+	DailyBudgetAtomic  int64             `json:"dailyBudgetAtomic"`
+	HourlyBudgetAtomic int64             `json:"hourlyBudgetAtomic"`
+	Status             BidderAgentStatus `json:"status"`
+	CreatedAt          time.Time         `json:"createdAt"`
+	UpdatedAt          time.Time         `json:"updatedAt"`
 }
 
 type AuctionRequest struct {

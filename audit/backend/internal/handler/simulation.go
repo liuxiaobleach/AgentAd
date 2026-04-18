@@ -3,20 +3,48 @@ package handler
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"math/rand"
 	"net/http"
+	"sort"
 
 	"github.com/zkdsp/audit-backend/internal/audit"
 	"github.com/zkdsp/audit-backend/internal/db"
 )
 
+// Billing constants for auction settlement.
+const (
+	// USDC has 6 decimals.
+	usdcDecimals = 6
+	usdcUnit     = int64(1_000_000)
+)
+
+// settlementImpressionAtomic returns how many USDC atomic units a single
+// impression costs, given a second-price settlement in CPM.
+// settlement is price per 1000 impressions, so single impression fee = cpm / 1000.
+func settlementImpressionAtomic(settlementCpm float64) int64 {
+	if settlementCpm <= 0 {
+		return 0
+	}
+	// cpm / 1000 * 1e6 = cpm * 1000
+	return int64(settlementCpm * 1000)
+}
+
+// valuePerClickAtomic converts the agent's advertiser-configured click value
+// (USDC float) into atomic units. This is captured on every real click.
+func valuePerClickAtomic(valuePerClick float64) int64 {
+	if valuePerClick <= 0 {
+		return 0
+	}
+	return int64(valuePerClick * float64(usdcUnit))
+}
+
 // RunSimulation generates a mock bid request, runs all bidder agents, and settles the auction.
 func (h *Handler) RunSimulation(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
-	// 1. Generate mock bid request
 	bidReq := generateMockBidRequest()
 	arDB, err := h.Queries.CreateAuctionRequest(ctx, bidReq)
 	if err != nil {
@@ -24,7 +52,6 @@ func (h *Handler) RunSimulation(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Return 202 immediately, run auction in background
 	go h.runAuctionInBackground(arDB)
 
 	writeJSON(w, 202, map[string]interface{}{
@@ -34,72 +61,44 @@ func (h *Handler) RunSimulation(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// agentBidContext carries the runtime info we need to settle one agent's bid.
+type agentBidContext struct {
+	agent db.BidderAgent
+	bid   db.AuctionBid
+}
+
 func (h *Handler) runAuctionInBackground(arDB db.AuctionRequest) {
 	ctx, cancel := context.WithTimeout(context.Background(), 180000000000) // 3 min
 	defer cancel()
 
-	log.Printf("[auction] request=%s slot=%s type=%s", arDB.ID, arDB.SlotID, arDB.SlotType)
+	log.Printf("[auction] request=%s slot=%s type=%s floor=%.2f",
+		arDB.ID, arDB.SlotID, arDB.SlotType, arDB.FloorCpm)
 
-	// 2. Get all active bidder agents
 	agents, err := h.Queries.GetAllActiveBidderAgents(ctx)
 	if err != nil {
 		log.Printf("[auction] failed to get agents: %v", err)
 		return
 	}
 
-	var allBids []db.AuctionBid
+	var bidContexts []agentBidContext
 
-	// 3. For each agent, get approved creatives + profiles, then call bidder
 	for _, agent := range agents {
+		// L3: Pre-bid balance + budget guardrails. Skip agents that cannot
+		// afford even the floor-price impression. This also prevents wasted
+		// LLM calls for bankrupt advertisers.
+		if !h.agentMayBid(ctx, agent, arDB.FloorCpm) {
+			// Record a "no bid" row for transparency in the bids list.
+			h.recordSkippedBid(ctx, arDB.ID, agent.ID, "insufficient balance or budget")
+			continue
+		}
+
 		creatives, err := h.Queries.GetApprovedCreativesByAdvertiser(ctx, agent.AdvertiserID)
 		if err != nil || len(creatives) == 0 {
 			log.Printf("[auction] agent=%s no approved creatives", agent.ID)
 			continue
 		}
 
-		// Build candidate list with profiles and stats
-		var candidates []audit.CandidateCreative
-		for _, c := range creatives {
-			cc := audit.CandidateCreative{
-				CreativeID:   c.ID,
-				CreativeName: c.CreativeName,
-			}
-
-			// Try to get profile
-			profile, err := h.Queries.GetCreativeProfile(ctx, c.ID)
-			if err == nil {
-				profileMap := map[string]interface{}{
-					"marketingSummary": profile.MarketingSummary,
-					"visualTags":      profile.VisualTags,
-					"ctaType":         profile.CtaType,
-					"targetAudiences": profile.TargetAudiences,
-				}
-				if profile.PlacementFit != nil {
-					var pf interface{}
-					json.Unmarshal(profile.PlacementFit, &pf)
-					profileMap["placementFit"] = pf
-				}
-				if profile.PredictedCtrPriors != nil {
-					var pc interface{}
-					json.Unmarshal(profile.PredictedCtrPriors, &pc)
-					profileMap["predictedCtrPriors"] = pc
-				}
-				cc.Profile = profileMap
-			}
-
-			// Get stats
-			impr, clicks, _ := h.Queries.GetCreativeStats(ctx, c.ID)
-			if impr > 0 {
-				cc.RecentStats = map[string]interface{}{
-					"impressions": impr,
-					"clicks":      clicks,
-					"ctr":         float64(clicks) / float64(impr),
-				}
-			}
-
-			candidates = append(candidates, cc)
-		}
-
+		candidates := buildCandidateCreatives(ctx, h, creatives)
 		if len(candidates) == 0 {
 			continue
 		}
@@ -131,16 +130,33 @@ func (h *Handler) runAuctionInBackground(arDB db.AuctionRequest) {
 			Candidates: candidates,
 		}
 
-		bidResult, err := audit.RunBidderAgent(ctx, h.Config.AnthropicAPIKey, h.Config.AuditModel, bidInput)
+		bidResult, err := audit.RunBidderAgent(ctx, h.Config.AnthropicAPIKey, h.Config.AuditModel, bidInput, h.Queries)
 		if err != nil {
 			log.Printf("[auction] agent=%s bid failed: %v", agent.ID, err)
 			continue
 		}
 
+		// L1: Hard clamp bid to agent.MaxBidCpm. LLM may (accidentally or via
+		// prompt injection) emit a bid above the advertiser-configured cap;
+		// this line enforces it server-side, prompt be damned.
+		if bidResult.Participate && bidResult.BidCpm > agent.MaxBidCpm {
+			log.Printf("[auction] agent=%s bid clamped %.2f -> %.2f (max_bid_cpm)",
+				agent.ID, bidResult.BidCpm, agent.MaxBidCpm)
+			bidResult.BidCpm = agent.MaxBidCpm
+		}
+		// If clamp or LLM output drops us below floor, disqualify this bid
+		// rather than let the auction pick a bid that can't clear the floor.
+		if bidResult.Participate && bidResult.BidCpm < arDB.FloorCpm {
+			log.Printf("[auction] agent=%s bid %.2f below floor %.2f, skipped",
+				agent.ID, bidResult.BidCpm, arDB.FloorCpm)
+			bidResult.Participate = false
+			reason := fmt.Sprintf("bid %.2f below floor %.2f", bidResult.BidCpm, arDB.FloorCpm)
+			bidResult.Reason = reason
+		}
+
 		log.Printf("[auction] agent=%s participate=%v creative=%s bid=%.2f",
 			agent.ID, bidResult.Participate, bidResult.SelectedCreativeID, bidResult.BidCpm)
 
-		// Save bid
 		bidDB := db.AuctionBid{
 			AuctionRequestID: arDB.ID,
 			BidderAgentID:    agent.ID,
@@ -161,59 +177,289 @@ func (h *Handler) runAuctionInBackground(arDB db.AuctionRequest) {
 			continue
 		}
 		if bidResult.Participate {
-			allBids = append(allBids, saved)
+			bidContexts = append(bidContexts, agentBidContext{agent: agent, bid: saved})
 		}
 	}
 
-	// 4. Run second-price auction
+	// Settle: sort all participating bids DESC by bid_cpm, then try each in
+	// order until one successfully reserves its impression fee. Losers just
+	// stay as losing bids. No participant -> no-fill result.
 	result := db.AuctionResult{AuctionRequestID: arDB.ID}
-
-	if len(allBids) == 0 {
-		// No participants
+	if len(bidContexts) == 0 {
 		result.Clicked = false
 		_, _ = h.Queries.CreateAuctionResult(ctx, result)
 		log.Printf("[auction] request=%s no bids", arDB.ID)
 		return
 	}
 
-	// Sort by bid CPM descending (find top 2)
-	var bestIdx, secondBestIdx int
-	var bestBid, secondBestBid float64
-	for i, b := range allBids {
-		if b.BidCpm != nil && *b.BidCpm > bestBid {
-			secondBestBid = bestBid
-			secondBestIdx = bestIdx
-			bestBid = *b.BidCpm
-			bestIdx = i
-		} else if b.BidCpm != nil && *b.BidCpm > secondBestBid {
-			secondBestBid = *b.BidCpm
-			secondBestIdx = i
+	sort.SliceStable(bidContexts, func(i, j int) bool {
+		bi := bidContexts[i].bid.BidCpm
+		bj := bidContexts[j].bid.BidCpm
+		if bi == nil {
+			return false
+		}
+		if bj == nil {
+			return true
+		}
+		return *bi > *bj
+	})
+
+	h.settleAuctionWithFallback(ctx, arDB, bidContexts, &result)
+	_, _ = h.Queries.CreateAuctionResult(ctx, result)
+	log.Printf("[auction] request=%s winner=%v settlement=%v clicked=%v",
+		arDB.ID, result.WinnerBidID, result.SettlementPrice, result.Clicked)
+}
+
+// settleAuctionWithFallback walks sorted bids and tries to reserve the
+// impression fee for each in turn. First successful reservation wins and
+// settles at the second-highest remaining price (or floor).
+//
+// Failure modes handled:
+//   - winner's advertiser balance too low  -> fall through to next bidder
+//   - hourly/daily budget exceeded         -> fall through to next bidder
+//
+// If all candidates fail, the auction becomes a no-fill (nil winner).
+func (h *Handler) settleAuctionWithFallback(
+	ctx context.Context,
+	arDB db.AuctionRequest,
+	sortedBids []agentBidContext,
+	result *db.AuctionResult,
+) {
+	for i, bc := range sortedBids {
+		// Second-price rule with fallback in mind: settlement price is the
+		// next *eligible* candidate's bid, or the floor if there isn't one.
+		// When we skip a higher bidder due to insufficient balance, the new
+		// winner settles against the bidder immediately below them in the
+		// remaining list — NOT against the skipped bidder's price.
+		settlementCpm := arDB.FloorCpm
+		if i+1 < len(sortedBids) && sortedBids[i+1].bid.BidCpm != nil {
+			if *sortedBids[i+1].bid.BidCpm > settlementCpm {
+				settlementCpm = *sortedBids[i+1].bid.BidCpm
+			}
+		}
+
+		impressionAtomic := settlementImpressionAtomic(settlementCpm)
+		if impressionAtomic <= 0 {
+			continue
+		}
+
+		// Also re-check the budget windows right before reservation — the
+		// L3 pre-check was a snapshot taken before the LLM call, and other
+		// concurrent auctions may have consumed budget since.
+		if !h.agentMayBid(ctx, bc.agent, settlementCpm) {
+			log.Printf("[auction] agent=%s budget exhausted during settlement, falling through", bc.agent.ID)
+			continue
+		}
+
+		meta := map[string]interface{}{
+			"auctionRequestId":    arDB.ID,
+			"bidId":               bc.bid.ID,
+			"agentId":             bc.agent.ID,
+			"settlementCpm":       settlementCpm,
+			"impressionAtomic":    impressionAtomic,
+			"event":               "auction_impression",
+		}
+		reservation, err := h.reserveSpend(
+			ctx,
+			bc.agent.AdvertiserID,
+			"auction_impression",
+			&bc.bid.ID,
+			impressionAtomic,
+			0,
+			meta,
+		)
+		if err != nil {
+			if errors.Is(err, db.ErrInsufficientBalance) {
+				log.Printf("[auction] agent=%s advertiser=%s insufficient balance for %d atomic, falling through",
+					bc.agent.ID, bc.agent.AdvertiserID, impressionAtomic)
+				continue
+			}
+			log.Printf("[auction] reserve failed agent=%s err=%v, falling through", bc.agent.ID, err)
+			continue
+		}
+
+		// Capture immediately — impression is happening now.
+		h.settleReservation(ctx, reservation.ID, true, db.SpendReservationStatusSettled)
+
+		if err := h.Queries.IncrementBidderAgentSpend(ctx, bc.agent.ID, impressionAtomic); err != nil {
+			log.Printf("[auction] update spend window failed agent=%s err=%v", bc.agent.ID, err)
+		}
+
+		// Credit the publisher for this impression.
+		h.creditPublisher(ctx, arDB.SlotID, "impression", &arDB.ID, &bc.bid.ID, impressionAtomic)
+
+		result.WinnerBidID = &bc.bid.ID
+		result.ShownCreativeID = bc.bid.SelectedCreativeID
+		result.SettlementPrice = &settlementCpm
+
+		// Probabilistic click simulation for the RunSimulation endpoint path.
+		// Real publisher-driven clicks come through TrackAdClick and are
+		// settled there separately.
+		if bc.bid.PredictedCtr != nil {
+			if rand.Float64() < *bc.bid.PredictedCtr {
+				result.Clicked = true
+				h.chargeClick(ctx, bc.agent, arDB.ID, bc.bid.ID, arDB.SlotID)
+			}
+		}
+		return
+	}
+	log.Printf("[auction] request=%s all bidders failed settlement, no-fill", arDB.ID)
+}
+
+// chargeClick captures value_per_click from the advertiser. Safe to call
+// more than once per click if the caller deduplicates upstream (currently we
+// trust MarkAuctionClicked to be called once per auction).
+func (h *Handler) chargeClick(ctx context.Context, agent db.BidderAgent, auctionID, bidID, slotID string) {
+	clickAtomic := valuePerClickAtomic(agent.ValuePerClick)
+	if clickAtomic <= 0 {
+		return
+	}
+	meta := map[string]interface{}{
+		"auctionRequestId": auctionID,
+		"bidId":            bidID,
+		"agentId":          agent.ID,
+		"clickAtomic":      clickAtomic,
+		"event":            "auction_click",
+	}
+	reservation, err := h.reserveSpend(
+		ctx,
+		agent.AdvertiserID,
+		"auction_click",
+		&bidID,
+		clickAtomic,
+		0,
+		meta,
+	)
+	if err != nil {
+		// Click already happened; even if balance is gone we just log and
+		// move on. Deducting more than the on-chain budget is impossible by
+		// reservation design, so this is graceful degradation.
+		log.Printf("[auction] click reserve failed agent=%s err=%v (click uncharged)", agent.ID, err)
+		return
+	}
+	h.settleReservation(ctx, reservation.ID, true, db.SpendReservationStatusSettled)
+	if err := h.Queries.IncrementBidderAgentSpend(ctx, agent.ID, clickAtomic); err != nil {
+		log.Printf("[auction] click spend-window update failed agent=%s err=%v", agent.ID, err)
+	}
+	h.creditPublisher(ctx, slotID, "click", &auctionID, &bidID, clickAtomic)
+}
+
+// creditPublisher resolves which publisher owns this slot and credits them
+// for the impression/click. Errors are logged but not propagated — the
+// advertiser-side charge has already settled and the ad served, we don't want
+// publisher bookkeeping to back-pressure ad delivery.
+func (h *Handler) creditPublisher(
+	ctx context.Context,
+	slotID, eventType string,
+	auctionID, bidID *string,
+	amountAtomic int64,
+) {
+	if amountAtomic <= 0 || slotID == "" {
+		return
+	}
+	publisherID, err := h.Queries.ResolvePublisherForSlot(ctx, slotID)
+	if err != nil || publisherID == "" {
+		log.Printf("[earnings] resolve publisher for slot=%s failed: %v", slotID, err)
+		return
+	}
+	slot := slotID
+	metadata := mustJSONRaw(map[string]interface{}{
+		"auctionRequestId": auctionID,
+		"bidId":            bidID,
+		"slotId":           slot,
+		"event":            eventType,
+	})
+	if _, err := h.Queries.CreatePublisherEarningEvent(
+		ctx, publisherID, eventType, auctionID, bidID, &slot, amountAtomic, metadata,
+	); err != nil {
+		log.Printf("[earnings] credit publisher=%s slot=%s amount=%d failed: %v",
+			publisherID, slot, amountAtomic, err)
+	}
+}
+
+// agentMayBid answers: given the agent's caps and current-window spend, AND
+// the advertiser's available USDC balance, can this agent pay at least one
+// impression at the floor price? This is a fast pre-filter; settlement layer
+// re-checks at the actual settlement price.
+func (h *Handler) agentMayBid(ctx context.Context, agent db.BidderAgent, floorCpm float64) bool {
+	// 1. Advertiser has spendable balance for at least one impression at floor.
+	minImpressionAtomic := settlementImpressionAtomic(floorCpm)
+	if minImpressionAtomic <= 0 {
+		minImpressionAtomic = 1 // always require SOMETHING spendable
+	}
+	balance, err := h.Queries.GetAdvertiserBalance(ctx, agent.AdvertiserID)
+	if err != nil {
+		log.Printf("[auction] agent=%s balance lookup failed: %v", agent.ID, err)
+		return false
+	}
+	if balance.SpendableAtomic < minImpressionAtomic {
+		return false
+	}
+
+	// 2. Agent's own rolling window caps (0 = unlimited).
+	if agent.HourlyBudgetAtomic > 0 || agent.DailyBudgetAtomic > 0 {
+		hourly, daily, err := h.Queries.GetBidderAgentSpendWindows(ctx, agent.ID)
+		if err != nil {
+			log.Printf("[auction] agent=%s spend-window lookup failed: %v", agent.ID, err)
+			return false
+		}
+		if agent.HourlyBudgetAtomic > 0 && hourly.SpentAtomic+minImpressionAtomic > agent.HourlyBudgetAtomic {
+			return false
+		}
+		if agent.DailyBudgetAtomic > 0 && daily.SpentAtomic+minImpressionAtomic > agent.DailyBudgetAtomic {
+			return false
 		}
 	}
-	_ = secondBestIdx
+	return true
+}
 
-	winner := allBids[bestIdx]
-	result.WinnerBidID = &winner.ID
-	result.ShownCreativeID = winner.SelectedCreativeID
+// recordSkippedBid persists a non-participating bid so the advertiser can see
+// why their agent didn't bid on this auction (in /auctions list).
+func (h *Handler) recordSkippedBid(ctx context.Context, auctionID, agentID, reason string) {
+	_, _ = h.Queries.CreateAuctionBid(ctx, db.AuctionBid{
+		AuctionRequestID: auctionID,
+		BidderAgentID:    agentID,
+		Reason:           &reason,
+	})
+}
 
-	// Second-price settlement
-	settlement := secondBestBid
-	if settlement < arDB.FloorCpm {
-		settlement = arDB.FloorCpm
+func buildCandidateCreatives(ctx context.Context, h *Handler, creatives []db.Creative) []audit.CandidateCreative {
+	candidates := make([]audit.CandidateCreative, 0, len(creatives))
+	for _, c := range creatives {
+		cc := audit.CandidateCreative{
+			CreativeID:   c.ID,
+			CreativeName: c.CreativeName,
+		}
+		if profile, err := h.Queries.GetCreativeProfile(ctx, c.ID); err == nil {
+			profileMap := map[string]interface{}{
+				"marketingSummary": profile.MarketingSummary,
+				"visualTags":       profile.VisualTags,
+				"ctaType":          profile.CtaType,
+				"targetAudiences":  profile.TargetAudiences,
+			}
+			if profile.PlacementFit != nil {
+				var pf interface{}
+				json.Unmarshal(profile.PlacementFit, &pf)
+				profileMap["placementFit"] = pf
+			}
+			if profile.PredictedCtrPriors != nil {
+				var pc interface{}
+				json.Unmarshal(profile.PredictedCtrPriors, &pc)
+				profileMap["predictedCtrPriors"] = pc
+			}
+			cc.Profile = profileMap
+		}
+		impr, clicks, _ := h.Queries.GetCreativeStats(ctx, c.ID)
+		if impr > 0 {
+			cc.RecentStats = map[string]interface{}{
+				"impressions": impr,
+				"clicks":      clicks,
+				"ctr":         float64(clicks) / float64(impr),
+			}
+		}
+		candidates = append(candidates, cc)
 	}
-	if len(allBids) == 1 {
-		settlement = arDB.FloorCpm
-	}
-	result.SettlementPrice = &settlement
-
-	// Simulate click (simple probability based on predicted CTR)
-	if winner.PredictedCtr != nil {
-		result.Clicked = rand.Float64() < *winner.PredictedCtr
-	}
-
-	_, _ = h.Queries.CreateAuctionResult(ctx, result)
-	log.Printf("[auction] request=%s winner=%s settlement=%.2f clicked=%v",
-		arDB.ID, winner.BidderAgentID, settlement, result.Clicked)
+	return candidates
 }
 
 func generateMockBidRequest() db.AuctionRequest {

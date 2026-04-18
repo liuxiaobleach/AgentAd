@@ -24,7 +24,7 @@ export default function Sidebar({ children }: { children: React.ReactNode }) {
     ? `${user.walletAddress.slice(0, 6)}...${user.walletAddress.slice(-4)}`
     : "Wallet not linked";
 
-  if (pathname === "/login") {
+  if (pathname === "/login" || pathname.startsWith("/publisher")) {
     return <>{children}</>;
   }
 

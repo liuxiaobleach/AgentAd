@@ -105,3 +105,57 @@ func VerifyERC20TransferToTreasury(
 		MatchedLogs:     matchedLogs,
 	}, nil
 }
+
+// ClaimTxVerification confirms a claim() tx landed on the expected escrow.
+type ClaimTxVerification struct {
+	TxHash        string
+	BlockNumber   int64
+	EscrowAddress string
+}
+
+// VerifyClaimOnchain checks that the tx was mined, succeeded, and was sent to
+// the expected BudgetEscrow contract. We don't decode event logs here — the
+// contract's usedReceipts mapping already prevents replay, so a successful
+// receipt status for the correct `to` address is sufficient proof the claim
+// landed.
+func VerifyClaimOnchain(
+	ctx context.Context,
+	rpcURL string,
+	txHash string,
+	escrowAddress string,
+) (ClaimTxVerification, error) {
+	client, err := ethclient.DialContext(ctx, rpcURL)
+	if err != nil {
+		return ClaimTxVerification{}, fmt.Errorf("connect rpc: %w", err)
+	}
+	defer client.Close()
+
+	receipt, err := client.TransactionReceipt(ctx, common.HexToHash(txHash))
+	if err != nil {
+		if errors.Is(err, ethereum.NotFound) {
+			return ClaimTxVerification{}, ErrTransactionPending
+		}
+		return ClaimTxVerification{}, fmt.Errorf("load transaction receipt: %w", err)
+	}
+	if receipt.Status != 1 {
+		return ClaimTxVerification{}, ErrTransactionFailed
+	}
+
+	// Confirm the tx's target matches the configured escrow. We do this
+	// by loading the transaction (receipts don't include `to`).
+	tx, _, err := client.TransactionByHash(ctx, common.HexToHash(txHash))
+	if err != nil {
+		return ClaimTxVerification{}, fmt.Errorf("load transaction: %w", err)
+	}
+	expected := common.HexToAddress(escrowAddress)
+	if tx.To() == nil || *tx.To() != expected {
+		return ClaimTxVerification{}, fmt.Errorf("tx target %v does not match escrow %s",
+			tx.To(), expected.Hex())
+	}
+
+	return ClaimTxVerification{
+		TxHash:        common.HexToHash(txHash).Hex(),
+		BlockNumber:   int64(receipt.BlockNumber.Uint64()),
+		EscrowAddress: expected.Hex(),
+	}, nil
+}
