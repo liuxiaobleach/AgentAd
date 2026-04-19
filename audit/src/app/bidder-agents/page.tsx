@@ -59,12 +59,20 @@ export default function BidderAgentsPage() {
     <div>
       <div className="flex items-center justify-between mb-8">
         <h2 className="text-2xl font-bold text-slate-900">Bidder Agents</h2>
-        <button
-          onClick={() => setShowCreate(true)}
-          className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700"
-        >
-          + New Agent
-        </button>
+        <div className="flex gap-2">
+          <Link
+            href="/bidder-agents/library"
+            className="px-4 py-2 bg-slate-100 text-slate-700 rounded-lg text-sm font-medium hover:bg-slate-200"
+          >
+            Strategy Library
+          </Link>
+          <button
+            onClick={() => setShowCreate(true)}
+            className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700"
+          >
+            + New Agent
+          </button>
+        </div>
       </div>
 
       {agents.length === 0 && !loading && (

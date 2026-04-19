@@ -330,3 +330,32 @@ type Manifest struct {
 	Version       int             `json:"version"`
 	CreatedAt     time.Time       `json:"createdAt"`
 }
+
+// BidderStrategyTemplate is an advertiser-owned, reusable bidding strategy
+// that can be applied to a bidder agent. Its `prompt` mirrors the free-text
+// `strategy_prompt` column on `bidder_agents`.
+type BidderStrategyTemplate struct {
+	ID            string    `json:"id"`
+	AdvertiserID  string    `json:"advertiserId"`
+	Name          string    `json:"name"`
+	Icon          string    `json:"icon"`
+	Description   string    `json:"description"`
+	Prompt        string    `json:"prompt"`
+	ValuePerClick *float64  `json:"valuePerClick,omitempty"`
+	MaxBidCpm     *float64  `json:"maxBidCpm,omitempty"`
+	CreatedAt     time.Time `json:"createdAt"`
+	UpdatedAt     time.Time `json:"updatedAt"`
+}
+
+// BidderAgentSkill is an advertiser-owned, reusable capability snippet
+// that the advertiser may append to an agent's strategy prompt.
+type BidderAgentSkill struct {
+	ID            string    `json:"id"`
+	AdvertiserID  string    `json:"advertiserId"`
+	Name          string    `json:"name"`
+	Icon          string    `json:"icon"`
+	Description   string    `json:"description"`
+	PromptSnippet string    `json:"promptSnippet"`
+	CreatedAt     time.Time `json:"createdAt"`
+	UpdatedAt     time.Time `json:"updatedAt"`
+}

@@ -737,6 +737,47 @@ func (q *Queries) CreateAttestation(ctx context.Context, att Attestation) (Attes
 	return out, nil
 }
 
+// UpdateAttestationTxHash records the on-chain tx hash for an attestation
+// after the background goroutine lands it on Sepolia. Lookups are by the
+// random 32-byte attestationId (unique).
+func (q *Queries) UpdateAttestationTxHash(ctx context.Context, attestationID string, txHash string) error {
+	const sql = `UPDATE attestations SET tx_hash = $2 WHERE attestation_id = $1`
+	_, err := q.Pool.Exec(ctx, sql, attestationID, txHash)
+	if err != nil {
+		return fmt.Errorf("update attestation tx_hash: %w", err)
+	}
+	return nil
+}
+
+// ListAttestationsMissingTxHash is used by the backfill CLI to iterate the
+// rows that need to be pushed on-chain.
+func (q *Queries) ListAttestationsMissingTxHash(ctx context.Context) ([]Attestation, error) {
+	const sql = `
+		SELECT id, audit_case_id, attestation_id, chain_id,
+		       tx_hash, status, report_cid, issued_at, expires_at, created_at
+		FROM attestations
+		WHERE tx_hash IS NULL AND status = $1
+		ORDER BY created_at ASC`
+	rows, err := q.Pool.Query(ctx, sql, AttestationStatusActive)
+	if err != nil {
+		return nil, fmt.Errorf("list attestations missing tx_hash: %w", err)
+	}
+	defer rows.Close()
+	var out []Attestation
+	for rows.Next() {
+		var a Attestation
+		if err := rows.Scan(
+			&a.ID, &a.AuditCaseID, &a.AttestationID, &a.ChainID,
+			&a.TxHash, &a.Status, &a.ReportCID,
+			&a.IssuedAt, &a.ExpiresAt, &a.CreatedAt,
+		); err != nil {
+			return nil, fmt.Errorf("scan attestation: %w", err)
+		}
+		out = append(out, a)
+	}
+	return out, rows.Err()
+}
+
 // ---------------------------------------------------------------------------
 // Manifests
 // ---------------------------------------------------------------------------

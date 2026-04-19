@@ -48,6 +48,85 @@ const CATEGORY_LABELS: Record<string, string> = {
   strategy: "Strategy",
 };
 
+type StrategyTone = {
+  label: string;
+  neon: string; // border + text color
+  glow: string; // box-shadow color
+  dot: string; // leading status dot color
+};
+
+const STRATEGY_TONES: Record<string, StrategyTone> = {
+  growth: {
+    label: "GROWTH",
+    neon: "#f472b6",
+    glow: "rgba(244, 114, 182, 0.45)",
+    dot: "#ec4899",
+  },
+  balanced: {
+    label: "BALANCED",
+    neon: "#22d3ee",
+    glow: "rgba(34, 211, 238, 0.45)",
+    dot: "#06b6d4",
+  },
+  conservative: {
+    label: "CONSERVATIVE",
+    neon: "#34d399",
+    glow: "rgba(52, 211, 153, 0.4)",
+    dot: "#10b981",
+  },
+  ctr_optimizer: {
+    label: "CTR-OPTIMIZER",
+    neon: "#fbbf24",
+    glow: "rgba(251, 191, 36, 0.4)",
+    dot: "#f59e0b",
+  },
+  audience_first: {
+    label: "AUDIENCE-FIRST",
+    neon: "#c084fc",
+    glow: "rgba(192, 132, 252, 0.45)",
+    dot: "#a855f7",
+  },
+  custom: {
+    label: "CUSTOM",
+    neon: "#94a3b8",
+    glow: "rgba(148, 163, 184, 0.35)",
+    dot: "#64748b",
+  },
+};
+
+function strategyTone(strategy: string): StrategyTone {
+  return (
+    STRATEGY_TONES[strategy] || {
+      label: strategy.toUpperCase().replace(/_/g, "-"),
+      neon: "#94a3b8",
+      glow: "rgba(148, 163, 184, 0.35)",
+      dot: "#64748b",
+    }
+  );
+}
+
+function StrategyChip({ strategy }: { strategy: string }) {
+  const t = strategyTone(strategy);
+  return (
+    <span
+      className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-sm font-mono text-[10px] tracking-[0.12em]"
+      style={{
+        background: "linear-gradient(135deg, #0d1321 0%, #070b14 100%)",
+        border: `1px solid ${t.neon}`,
+        color: t.neon,
+        boxShadow: `0 0 0 1px rgba(0,0,0,0.4), 0 0 10px ${t.glow}, inset 0 0 8px rgba(0,0,0,0.6)`,
+        textShadow: `0 0 6px ${t.glow}`,
+      }}
+    >
+      <span
+        className="inline-block w-1.5 h-1.5 rounded-full"
+        style={{ background: t.dot, boxShadow: `0 0 6px ${t.dot}` }}
+      />
+      {t.label}
+    </span>
+  );
+}
+
 export default function AnalystPage() {
   const [stats, setStats] = useState<any>(null);
   const [analysis, setAnalysis] = useState<AnalysisResult | null>(null);
@@ -113,7 +192,7 @@ export default function AnalystPage() {
                 <div key={a.agentId} className="p-3 bg-slate-50 rounded-lg">
                   <div className="flex items-center justify-between mb-2">
                     <span className="font-medium text-sm text-slate-900">{a.agentName}</span>
-                    <span className="text-xs px-2 py-0.5 bg-slate-200 text-slate-600 rounded">{a.strategy}</span>
+                    <StrategyChip strategy={a.strategy} />
                   </div>
                   <div className="grid grid-cols-4 gap-2 text-xs">
                     <div>

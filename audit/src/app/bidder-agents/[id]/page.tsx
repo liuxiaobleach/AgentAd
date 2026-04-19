@@ -1,8 +1,15 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
+import Link from "next/link";
 import { apiFetch } from "@/lib/api";
+import {
+  LibraryList,
+  useLibrary,
+  StrategyTemplate,
+  AgentSkill,
+} from "@/components/BidderLibrary";
 
 // ---- Preset strategy templates ----
 const STRATEGY_PRESETS = [
@@ -145,6 +152,23 @@ export default function BidderAgentDetailPage() {
   const [selectedSkills, setSelectedSkills] = useState<Set<string>>(new Set());
   const [vpc, setVpc] = useState(1.5);
   const [maxBid, setMaxBid] = useState(35);
+  const [pickerOpen, setPickerOpen] = useState<null | "templates" | "skills">(null);
+
+  // Custom library data (for snippet lookup + display)
+  const templatesLib = useLibrary<StrategyTemplate>("templates");
+  const skillsLib = useLibrary<AgentSkill>("skills");
+
+  const allSkills = useMemo(
+    () => [
+      ...AGENT_SKILLS.map((s) => ({ id: s.id, name: s.name, snippet: s.promptSnippet })),
+      ...skillsLib.items.map((s) => ({
+        id: s.id,
+        name: s.name,
+        snippet: s.promptSnippet,
+      })),
+    ],
+    [skillsLib.items]
+  );
 
   useEffect(() => {
     apiFetch(`/api/bidder-agents/${id}`)
@@ -174,6 +198,22 @@ export default function BidderAgentDetailPage() {
       .catch(() => {});
   }, [id]);
 
+  // When custom skills finish loading, detect any whose snippet is already in the prompt.
+  useEffect(() => {
+    if (!agent?.strategyPrompt || skillsLib.items.length === 0) return;
+    setSelectedSkills((prev) => {
+      const next = new Set(prev);
+      let changed = false;
+      for (const s of skillsLib.items) {
+        if (agent.strategyPrompt.includes(s.promptSnippet) && !next.has(s.id)) {
+          next.add(s.id);
+          changed = true;
+        }
+      }
+      return changed ? next : prev;
+    });
+  }, [agent?.strategyPrompt, skillsLib.items]);
+
   function handlePresetSelect(presetId: string) {
     setSelectedPreset(presetId);
     const preset = STRATEGY_PRESETS.find((p) => p.id === presetId);
@@ -193,17 +233,15 @@ export default function BidderAgentDetailPage() {
     });
   }
 
-  // Build final prompt = base prompt + skill snippets
+  // Build final prompt = base prompt + skill snippets (built-in + custom)
   function buildFinalPrompt(): string {
     let prompt = customPrompt;
-    for (const skill of AGENT_SKILLS) {
-      // Remove existing skill snippet if present
-      prompt = prompt.replace(skill.promptSnippet, "");
+    for (const skill of allSkills) {
+      prompt = prompt.split(skill.snippet).join("");
     }
-    // Append selected skills
-    for (const skill of AGENT_SKILLS) {
+    for (const skill of allSkills) {
       if (selectedSkills.has(skill.id)) {
-        prompt += skill.promptSnippet;
+        prompt += skill.snippet;
       }
     }
     return prompt.trim();
@@ -271,8 +309,22 @@ export default function BidderAgentDetailPage() {
 
           {/* Strategy Presets */}
           <div className="bg-white rounded-xl border border-slate-200 p-6">
-            <h3 className="font-semibold text-slate-900 mb-1">Strategy Template</h3>
-            <p className="text-xs text-slate-400 mb-4">Select a preset strategy or choose "Custom" to write your own.</p>
+            <div className="flex items-center justify-between mb-1">
+              <h3 className="font-semibold text-slate-900">Strategy Template</h3>
+              <button
+                onClick={() => setPickerOpen("templates")}
+                className="text-xs text-blue-600 hover:text-blue-800 font-medium"
+              >
+                Browse My Library ({templatesLib.items.length})
+              </button>
+            </div>
+            <p className="text-xs text-slate-400 mb-4">
+              Select a preset strategy, pick one you&apos;ve saved, or choose &quot;Custom&quot; to write your own.
+              {" "}
+              <Link href="/bidder-agents/library" className="text-blue-500 hover:underline">
+                Manage library
+              </Link>
+            </p>
 
             <div className="grid grid-cols-3 gap-3">
               {STRATEGY_PRESETS.map((preset) => {
@@ -303,7 +355,15 @@ export default function BidderAgentDetailPage() {
 
           {/* Agent Skills */}
           <div className="bg-white rounded-xl border border-slate-200 p-6">
-            <h3 className="font-semibold text-slate-900 mb-1">Agent Skills</h3>
+            <div className="flex items-center justify-between mb-1">
+              <h3 className="font-semibold text-slate-900">Agent Skills</h3>
+              <button
+                onClick={() => setPickerOpen("skills")}
+                className="text-xs text-blue-600 hover:text-blue-800 font-medium"
+              >
+                Browse My Library ({skillsLib.items.length})
+              </button>
+            </div>
             <p className="text-xs text-slate-400 mb-4">
               Enable skills to enhance the agent. Each skill adds specialized instructions to the agent prompt.
             </p>
@@ -322,10 +382,12 @@ export default function BidderAgentDetailPage() {
                         : "border-slate-200 hover:border-slate-300"
                     }`}
                   >
-                    <div className={`mt-0.5 w-5 h-5 rounded flex items-center justify-center flex-shrink-0 text-xs ${
-                      isOn ? "bg-emerald-500 text-white" : "bg-slate-200 text-slate-400"
+                    <div className={`mt-0.5 w-4 h-4 rounded-full flex items-center justify-center flex-shrink-0 text-[10px] transition-colors ${
+                      isOn
+                        ? "bg-emerald-500 text-white"
+                        : "border border-slate-300 bg-transparent"
                     }`}>
-                      {isOn ? "\u2713" : ""}
+                      {isOn && "\u2713"}
                     </div>
                     <div>
                       <div className="flex items-center gap-1.5">
@@ -340,6 +402,37 @@ export default function BidderAgentDetailPage() {
                 );
               })}
             </div>
+
+            {skillsLib.items.some((s) => selectedSkills.has(s.id)) && (
+              <div className="mt-4">
+                <div className="text-xs font-medium text-slate-500 mb-2">Custom skills from your library</div>
+                <div className="grid grid-cols-2 gap-3">
+                  {skillsLib.items
+                    .filter((s) => selectedSkills.has(s.id))
+                    .map((s) => (
+                      <button
+                        key={s.id}
+                        type="button"
+                        onClick={() => toggleSkill(s.id)}
+                        className="flex items-start gap-3 p-3 rounded-lg border border-emerald-400 bg-emerald-50 text-left"
+                      >
+                        <div className="mt-0.5 w-4 h-4 rounded-full flex items-center justify-center flex-shrink-0 text-[10px] bg-emerald-500 text-white">
+                          ✓
+                        </div>
+                        <div>
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-sm">{s.icon || "⚙️"}</span>
+                            <span className="text-sm font-medium text-emerald-800">{s.name}</span>
+                          </div>
+                          <p className="text-xs text-slate-500 mt-0.5">
+                            {s.description || <span className="italic text-slate-400">No description</span>}
+                          </p>
+                        </div>
+                      </button>
+                    ))}
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Custom Prompt Editor */}
@@ -442,6 +535,79 @@ export default function BidderAgentDetailPage() {
           </div>
         </div>
       </div>
+
+      {pickerOpen && (
+        <div
+          className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4"
+          onClick={() => setPickerOpen(null)}
+        >
+          <div
+            className="bg-white rounded-xl w-full max-w-3xl max-h-[80vh] overflow-hidden flex flex-col"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200">
+              <div>
+                <h3 className="font-semibold text-slate-900">
+                  {pickerOpen === "templates"
+                    ? "Pick a Strategy Template"
+                    : "Pick Agent Skills"}
+                </h3>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  {pickerOpen === "templates"
+                    ? "Click a template to apply it to this agent."
+                    : "Click to toggle skills. Selected skills are appended to the strategy prompt."}
+                </p>
+              </div>
+              <button
+                onClick={() => setPickerOpen(null)}
+                className="text-slate-400 hover:text-slate-600 text-2xl leading-none"
+                aria-label="Close"
+              >
+                ×
+              </button>
+            </div>
+            <div className="flex-1 overflow-y-auto p-6">
+              <LibraryList
+                kind={pickerOpen}
+                mode="pick"
+                selectedIds={pickerOpen === "skills" ? selectedSkills : undefined}
+                onPick={(item) => {
+                  if (pickerOpen === "templates") {
+                    const t = item as StrategyTemplate;
+                    setSelectedPreset("custom");
+                    setCustomPrompt(t.prompt);
+                    if (t.valuePerClick != null) setVpc(t.valuePerClick);
+                    if (t.maxBidCpm != null) setMaxBid(t.maxBidCpm);
+                    setPickerOpen(null);
+                  } else {
+                    toggleSkill(item.id);
+                  }
+                }}
+              />
+              {pickerOpen === "templates" && templatesLib.items.length === 0 && !templatesLib.loading && (
+                <div className="mt-4 text-center">
+                  <Link
+                    href="/bidder-agents/library"
+                    className="text-sm text-blue-600 hover:underline"
+                  >
+                    Create your first template →
+                  </Link>
+                </div>
+              )}
+            </div>
+            {pickerOpen === "skills" && (
+              <div className="px-6 py-3 border-t border-slate-200 flex justify-end">
+                <button
+                  onClick={() => setPickerOpen(null)}
+                  className="px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+                >
+                  Done
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

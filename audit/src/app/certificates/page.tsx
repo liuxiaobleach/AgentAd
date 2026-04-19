@@ -8,6 +8,7 @@ interface CertificateRecord {
   id: string;
   attestationId?: string;
   chainId?: number;
+  txHash?: string | null;
   status?: string;
   issuedAt?: string | null;
   expiresAt?: string | null;
@@ -18,6 +19,8 @@ interface CertificateRecord {
     } | null;
   } | null;
 }
+
+const ETHERSCAN_TX_BASE = "https://sepolia.etherscan.io/tx/";
 
 export default function CertificatesPage() {
   const [certs, setCerts] = useState<CertificateRecord[]>([]);
@@ -129,11 +132,23 @@ export default function CertificatesPage() {
                       {cert.auditCase?.creative?.projectName || "-"}
                     </p>
                   </td>
-                  <td className="px-6 py-4 font-mono text-xs text-slate-600 max-w-[200px] truncate">
-                    {cert.attestationId || "-"}
+                  <td className="px-6 py-4 font-mono text-xs text-slate-600 max-w-[240px]">
+                    <p className="truncate">{cert.attestationId || "-"}</p>
+                    {cert.txHash ? (
+                      <a
+                        href={`${ETHERSCAN_TX_BASE}${cert.txHash}`}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="text-[10px] text-cyan-600 hover:text-cyan-700 hover:underline truncate block"
+                      >
+                        ↗ {cert.txHash.slice(0, 10)}…{cert.txHash.slice(-6)}
+                      </a>
+                    ) : (
+                      <span className="text-[10px] text-slate-400">pending on-chain…</span>
+                    )}
                   </td>
                   <td className="px-6 py-4 text-sm text-slate-600">
-                    {cert.chainId ? `Base Sepolia (${cert.chainId})` : "Base Sepolia"}
+                    Ethereum Sepolia (11155111)
                   </td>
                   <td className="px-6 py-4">
                     <span

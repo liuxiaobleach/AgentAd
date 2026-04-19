@@ -44,7 +44,7 @@ export async function issueAttestation(
     data: {
       auditCaseId: input.auditCaseId,
       attestationId,
-      chainId: 84532, // Base Sepolia
+      chainId: 11155111, // Ethereum Sepolia
       status: "ACTIVE",
       issuedAt: new Date(now * 1000),
       expiresAt: new Date(expiresAt * 1000),
@@ -82,7 +82,7 @@ export async function generateManifest(
     creativeUrl: creative.imageUrl,
     clickUrl: creative.clickUrl || creative.landingUrl,
     declaredLandingUrl: creative.landingUrl,
-    chainId: 84532,
+    chainId: 11155111,
     registryAddress: process.env.REGISTRY_ADDRESS || "0x0000000000000000000000000000000000000000",
     attestationId: attestation.attestationId,
     creativeHash: attestation.creativeHash,

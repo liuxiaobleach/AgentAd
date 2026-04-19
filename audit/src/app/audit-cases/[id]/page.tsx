@@ -983,7 +983,24 @@ export default function AuditCaseDetailPage() {
               <h3 className="font-semibold text-slate-900 mb-4">Attestation</h3>
               <dl className="space-y-2 text-sm">
                 <div><dt className="text-slate-500">Attestation ID</dt><dd className="font-mono text-xs break-all">{auditCase.attestation.attestationId}</dd></div>
-                <div><dt className="text-slate-500">Chain</dt><dd>Base Sepolia ({auditCase.attestation.chainId})</dd></div>
+                <div><dt className="text-slate-500">Chain</dt><dd>Ethereum Sepolia (11155111)</dd></div>
+                <div>
+                  <dt className="text-slate-500">On-chain Tx</dt>
+                  <dd className="font-mono text-xs break-all">
+                    {auditCase.attestation.txHash ? (
+                      <a
+                        href={`https://sepolia.etherscan.io/tx/${auditCase.attestation.txHash}`}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="text-cyan-600 hover:text-cyan-700 hover:underline"
+                      >
+                        {auditCase.attestation.txHash} ↗
+                      </a>
+                    ) : (
+                      <span className="text-slate-400">pending on-chain…</span>
+                    )}
+                  </dd>
+                </div>
                 <div><dt className="text-slate-500">Status</dt><dd><span className="badge-verified">{auditCase.attestation.status}</span></dd></div>
                 {auditCase.attestation.issuedAt && <div><dt className="text-slate-500">Issued</dt><dd>{new Date(auditCase.attestation.issuedAt).toLocaleString()}</dd></div>}
                 {auditCase.attestation.expiresAt && <div><dt className="text-slate-500">Expires</dt><dd>{new Date(auditCase.attestation.expiresAt).toLocaleString()}</dd></div>}

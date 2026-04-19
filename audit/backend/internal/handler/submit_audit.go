@@ -16,6 +16,7 @@ import (
 	"github.com/zkdsp/audit-backend/internal/attestation"
 	"github.com/zkdsp/audit-backend/internal/audit"
 	"github.com/zkdsp/audit-backend/internal/db"
+	"github.com/zkdsp/audit-backend/internal/onchain"
 )
 
 // SubmitAudit creates the audit case, returns immediately, and runs the
@@ -343,7 +344,7 @@ func (h *Handler) issueAttestationAndManifest(ctx context.Context, auditCaseID s
 	if _, err := h.Queries.CreateAttestation(ctx, db.Attestation{
 		AuditCaseID:   auditCaseID,
 		AttestationID: attOut.AttestationID,
-		ChainID:       84532,
+		ChainID:       11155111,
 		Status:        db.AttestationStatusActive,
 		IssuedAt:      &issuedAt,
 		ExpiresAt:     &expiresAt,
@@ -371,11 +372,58 @@ func (h *Handler) issueAttestationAndManifest(ctx context.Context, auditCaseID s
 	}
 
 	manifestJSON, _ := json.Marshal(manifestData)
-	_, err = h.Queries.CreateManifest(ctx, db.Manifest{
+	if _, err := h.Queries.CreateManifest(ctx, db.Manifest{
 		CreativeID:    creative.ID,
 		AttestationID: attOut.AttestationID,
 		ManifestJSON:  manifestJSON,
 		Version:       1,
-	})
-	return err
+	}); err != nil {
+		return err
+	}
+
+	h.issueAttestationOnchainAsync(attOut)
+	return nil
+}
+
+// issueAttestationOnchainAsync pushes the attestation to the on-chain
+// AdAttestationRegistry in a background goroutine. Failures are logged but
+// don't fail the audit — the row can be retried via the backfill CLI.
+func (h *Handler) issueAttestationOnchainAsync(attOut attestation.AttestationOutput) {
+	cfg := h.Config
+	if cfg.RegistryAddress == "" ||
+		cfg.RegistryAddress == "0x0000000000000000000000000000000000000000" ||
+		cfg.IssuerPrivateKey == "" ||
+		cfg.SepoliaRPCURL == "" {
+		log.Printf("[onchain] skipping on-chain issuance for %s: registry/issuer/rpc not configured",
+			attOut.AttestationID)
+		return
+	}
+
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+		defer cancel()
+
+		txHash, err := onchain.IssueAttestationOnchain(ctx,
+			cfg.SepoliaRPCURL, cfg.RegistryAddress, cfg.IssuerPrivateKey,
+			cfg.SepoliaChainID,
+			onchain.AttestationIssueParams{
+				AttestationID:       attOut.AttestationID,
+				CreativeHash:        attOut.CreativeHash,
+				DestinationHash:     attOut.DestinationHash,
+				PlacementDomainHash: attOut.PlacementDomainHash,
+				PolicyVersionHash:   attOut.PolicyVersionHash,
+				ExpiresAt:           attOut.ExpiresAt,
+				ReportCID:           "",
+			})
+		if err != nil {
+			log.Printf("[onchain] issue %s failed: %v", attOut.AttestationID, err)
+			return
+		}
+		if err := h.Queries.UpdateAttestationTxHash(ctx, attOut.AttestationID, txHash); err != nil {
+			log.Printf("[onchain] recorded tx %s but failed to persist for %s: %v",
+				txHash, attOut.AttestationID, err)
+			return
+		}
+		log.Printf("[onchain] issued %s tx=%s", attOut.AttestationID, txHash)
+	}()
 }

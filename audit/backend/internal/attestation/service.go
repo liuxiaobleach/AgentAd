@@ -140,7 +140,7 @@ func GenerateManifest(creativeID string, att AttestationOutput, creative Creativ
 		CreativeURL:        creative.ImageURL,
 		ClickURL:           clickURL,
 		DeclaredLandingURL: creative.LandingURL,
-		ChainID:            84532, // Base Sepolia
+		ChainID:            11155111, // Ethereum Sepolia
 		RegistryAddress:    registryAddress,
 		AttestationID:      att.AttestationID,
 		CreativeHash:       att.CreativeHash,

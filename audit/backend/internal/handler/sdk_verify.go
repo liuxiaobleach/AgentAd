@@ -98,7 +98,7 @@ func (h *Handler) SDKVerify(w http.ResponseWriter, r *http.Request) {
 		resp.ExpiresAt = &ts
 	}
 	if att.TxHash != nil {
-		url := "https://sepolia.basescan.org/tx/" + *att.TxHash
+		url := "https://sepolia.etherscan.io/tx/" + *att.TxHash
 		resp.ExplorerURL = &url
 	}
 

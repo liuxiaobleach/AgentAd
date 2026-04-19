@@ -98,6 +98,16 @@ func main() {
 		r.Patch("/api/bidder-agents/{id}", h.UpdateBidderAgent)
 		r.Delete("/api/bidder-agents/{id}", h.DeleteBidderAgent)
 
+		// Bidder Library (per-advertiser strategy templates + agent skills)
+		r.Get("/api/bidder-library/templates", h.ListStrategyTemplates)
+		r.Post("/api/bidder-library/templates", h.CreateStrategyTemplate)
+		r.Patch("/api/bidder-library/templates/{id}", h.UpdateStrategyTemplate)
+		r.Delete("/api/bidder-library/templates/{id}", h.DeleteStrategyTemplate)
+		r.Get("/api/bidder-library/skills", h.ListAgentSkills)
+		r.Post("/api/bidder-library/skills", h.CreateAgentSkill)
+		r.Patch("/api/bidder-library/skills/{id}", h.UpdateAgentSkill)
+		r.Delete("/api/bidder-library/skills/{id}", h.DeleteAgentSkill)
+
 		// Auctions
 		r.Get("/api/auctions", h.ListAuctions)
 		r.Get("/api/auctions/{id}", h.GetAuction)
