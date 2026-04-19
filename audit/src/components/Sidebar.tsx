@@ -8,6 +8,7 @@ const navItems = [
   { href: "/dashboard", label: "Dashboard", icon: "\u25C8" },
   { href: "/billing", label: "Billing", icon: "\u25A0" },
   { href: "/creatives", label: "Creatives", icon: "\u25A3" },
+  { href: "/creative-lab", label: "Creative Lab", icon: "\u2726" },
   { href: "/audit-cases", label: "Audit Cases", icon: "\u25CE" },
   { href: "/bidder-agents", label: "Bidder Agents", icon: "\u2B23" },
   { href: "/auctions", label: "My Bids", icon: "\u26A1" },

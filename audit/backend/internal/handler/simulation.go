@@ -181,6 +181,13 @@ func (h *Handler) runAuctionInBackground(arDB db.AuctionRequest) {
 		}
 	}
 
+	// Dedup self-competition: if an advertiser runs multiple agents, only the
+	// highest-confidence bid from that advertiser participates in the auction.
+	// Without this, the advertiser's own sibling agent's bid can become the
+	// second-price anchor and artificially lift their own settlement price.
+	// Losing sibling bids are still saved to the DB for transparency.
+	bidContexts = dedupeSameAdvertiserBids(bidContexts)
+
 	// Settle: sort all participating bids DESC by bid_cpm, then try each in
 	// order until one successfully reserves its impression fee. Losers just
 	// stay as losing bids. No participant -> no-fill result.
@@ -460,6 +467,55 @@ func buildCandidateCreatives(ctx context.Context, h *Handler, creatives []db.Cre
 		candidates = append(candidates, cc)
 	}
 	return candidates
+}
+
+// dedupeSameAdvertiserBids keeps only the highest-confidence bid per advertiser
+// so an advertiser's multiple agents don't bid each other up. Tiebreaker when
+// confidence is equal (or nil): higher bid_cpm wins; then earliest-saved id.
+func dedupeSameAdvertiserBids(bids []agentBidContext) []agentBidContext {
+	best := make(map[string]agentBidContext, len(bids))
+	for _, bc := range bids {
+		adv := bc.agent.AdvertiserID
+		cur, ok := best[adv]
+		if !ok {
+			best[adv] = bc
+			continue
+		}
+		if betterSiblingBid(bc, cur) {
+			log.Printf("[auction] dedupe advertiser=%s keep agent=%s over agent=%s",
+				adv, bc.agent.ID, cur.agent.ID)
+			best[adv] = bc
+		} else {
+			log.Printf("[auction] dedupe advertiser=%s drop agent=%s (lost to agent=%s)",
+				adv, bc.agent.ID, cur.agent.ID)
+		}
+	}
+	out := make([]agentBidContext, 0, len(best))
+	for _, v := range best {
+		out = append(out, v)
+	}
+	return out
+}
+
+func betterSiblingBid(a, b agentBidContext) bool {
+	ca := derefFloat(a.bid.Confidence)
+	cb := derefFloat(b.bid.Confidence)
+	if ca != cb {
+		return ca > cb
+	}
+	ba := derefFloat(a.bid.BidCpm)
+	bb := derefFloat(b.bid.BidCpm)
+	if ba != bb {
+		return ba > bb
+	}
+	return a.bid.ID < b.bid.ID
+}
+
+func derefFloat(p *float64) float64 {
+	if p == nil {
+		return 0
+	}
+	return *p
 }
 
 func generateMockBidRequest() db.AuctionRequest {

@@ -4,9 +4,16 @@ pragma solidity ^0.8.24;
 import "forge-std/Test.sol";
 import "../src/BudgetEscrow.sol";
 import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
+import "@openzeppelin/contracts/token/ERC20/extensions/ERC20Permit.sol";
 
 contract MockUSDC is ERC20 {
     constructor() ERC20("Mock USDC", "USDC") {}
+    function mint(address to, uint256 amount) external { _mint(to, amount); }
+    function decimals() public pure override returns (uint8) { return 6; }
+}
+
+contract MockPermitUSDC is ERC20, ERC20Permit {
+    constructor() ERC20("Mock Permit USDC", "pUSDC") ERC20Permit("Mock Permit USDC") {}
     function mint(address to, uint256 amount) external { _mint(to, amount); }
     function decimals() public pure override returns (uint8) { return 6; }
 }
@@ -126,6 +133,76 @@ contract BudgetEscrowTest is Test {
         assertEq(escrow.issuer(), newIssuer);
     }
 
+    // ---------------- depositWithPermit ----------------
+
+    function testDepositWithPermit() public {
+        MockPermitUSDC permitUsdc = new MockPermitUSDC();
+        BudgetEscrow permitEscrow = new BudgetEscrow(address(permitUsdc), owner, issuer);
+
+        uint256 userKey = 0xBEEFCAFE;
+        address user = vm.addr(userKey);
+        permitUsdc.mint(user, 1_000_000_000);
+
+        uint256 amount = 250_000_000;
+        uint256 deadline = block.timestamp + 1 hours;
+        (uint8 v, bytes32 r, bytes32 s) = _signPermit(
+            permitUsdc,
+            userKey,
+            user,
+            address(permitEscrow),
+            amount,
+            permitUsdc.nonces(user),
+            deadline
+        );
+
+        vm.prank(user);
+        permitEscrow.depositWithPermit(amount, deadline, v, r, s);
+
+        assertEq(permitEscrow.deposits(user), amount);
+        assertEq(permitEscrow.totalDeposited(), amount);
+        assertEq(permitUsdc.balanceOf(address(permitEscrow)), amount);
+        assertEq(permitUsdc.allowance(user, address(permitEscrow)), 0);
+    }
+
+    function testDepositWithPermitBadSignatureReverts() public {
+        MockPermitUSDC permitUsdc = new MockPermitUSDC();
+        BudgetEscrow permitEscrow = new BudgetEscrow(address(permitUsdc), owner, issuer);
+
+        uint256 userKey = 0xBEEFCAFE;
+        address user = vm.addr(userKey);
+        permitUsdc.mint(user, 1_000_000_000);
+
+        uint256 amount = 100_000_000;
+        uint256 deadline = block.timestamp + 1 hours;
+        // Sign with a different key => permit recover mismatch => contract
+        // reverts because there is no pre-existing allowance to fall back to.
+        (uint8 v, bytes32 r, bytes32 s) = _signPermit(
+            permitUsdc,
+            0xDEADBEEF,
+            user,
+            address(permitEscrow),
+            amount,
+            permitUsdc.nonces(user),
+            deadline
+        );
+
+        vm.prank(user);
+        vm.expectRevert();
+        permitEscrow.depositWithPermit(amount, deadline, v, r, s);
+    }
+
+    function testDepositWithPermitFallsBackToExistingAllowance() public {
+        // Non-permit token: depositWithPermit should not revert if the user
+        // has already approved the escrow for >= amount. This keeps the path
+        // resilient when connecting to tokens that ignore EIP-2612.
+        vm.startPrank(alice);
+        usdc.approve(address(escrow), 50_000_000);
+        escrow.depositWithPermit(50_000_000, block.timestamp + 1 hours, 0, bytes32(0), bytes32(0));
+        vm.stopPrank();
+
+        assertEq(escrow.deposits(alice), 50_000_000);
+    }
+
     // ---------------- helpers ----------------
 
     function _depositAs(address who, uint256 amount) internal {
@@ -144,5 +221,25 @@ contract BudgetEscrowTest is Test {
         bytes32 digest = escrow.claimDigest(pub, amount, receiptId, expiry);
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(issuerKey, digest);
         return (receiptId, expiry, abi.encodePacked(r, s, v));
+    }
+
+    function _signPermit(
+        MockPermitUSDC permitUsdc,
+        uint256 ownerKey,
+        address ownerAddr,
+        address spender,
+        uint256 value,
+        uint256 nonce,
+        uint256 deadline
+    ) internal view returns (uint8, bytes32, bytes32) {
+        bytes32 PERMIT_TYPEHASH =
+            keccak256("Permit(address owner,address spender,uint256 value,uint256 nonce,uint256 deadline)");
+        bytes32 structHash = keccak256(
+            abi.encode(PERMIT_TYPEHASH, ownerAddr, spender, value, nonce, deadline)
+        );
+        bytes32 digest = keccak256(
+            abi.encodePacked("\x19\x01", permitUsdc.DOMAIN_SEPARATOR(), structHash)
+        );
+        return vm.sign(ownerKey, digest);
     }
 }

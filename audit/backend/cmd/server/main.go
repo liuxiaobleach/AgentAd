@@ -89,11 +89,14 @@ func main() {
 
 		// Creative Profiles
 		r.Get("/api/creative-profiles/{creativeId}", h.GetCreativeProfile)
+		r.Get("/api/creative-lab", h.GetCreativeLab)
 
 		// Bidder Agents
 		r.Get("/api/bidder-agents", h.ListBidderAgents)
+		r.Post("/api/bidder-agents", h.CreateBidderAgent)
 		r.Get("/api/bidder-agents/{id}", h.GetBidderAgentDetail)
 		r.Patch("/api/bidder-agents/{id}", h.UpdateBidderAgent)
+		r.Delete("/api/bidder-agents/{id}", h.DeleteBidderAgent)
 
 		// Auctions
 		r.Get("/api/auctions", h.ListAuctions)

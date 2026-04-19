@@ -29,21 +29,21 @@ type Message = {
 type TicketDetail = Ticket & { messages: Message[] };
 
 const CATEGORIES: { value: string; label: string }[] = [
-  { value: "billing", label: "计费 / 预算" },
-  { value: "audit", label: "审核" },
-  { value: "bidding", label: "竞价 Agent" },
-  { value: "creatives", label: "素材" },
-  { value: "publisher", label: "Publisher / 收益" },
-  { value: "technical", label: "技术 / 集成" },
-  { value: "account", label: "账号" },
-  { value: "other", label: "其他" },
+  { value: "billing", label: "Billing / Budget" },
+  { value: "audit", label: "Audit" },
+  { value: "bidding", label: "Bidder Agent" },
+  { value: "creatives", label: "Creatives" },
+  { value: "publisher", label: "Publisher / Earnings" },
+  { value: "technical", label: "Technical / Integration" },
+  { value: "account", label: "Account" },
+  { value: "other", label: "Other" },
 ];
 
 const PRIORITIES: { value: string; label: string }[] = [
-  { value: "low", label: "低" },
-  { value: "normal", label: "普通" },
-  { value: "high", label: "高" },
-  { value: "urgent", label: "紧急" },
+  { value: "low", label: "Low" },
+  { value: "normal", label: "Normal" },
+  { value: "high", label: "High" },
+  { value: "urgent", label: "Urgent" },
 ];
 
 function categoryLabel(v: string) {
@@ -53,15 +53,15 @@ function categoryLabel(v: string) {
 function statusLabel(v: Ticket["status"]) {
   switch (v) {
     case "open":
-      return { text: "待处理", color: "#22d3ee", bg: "rgba(6,182,212,0.15)", border: "rgba(6,182,212,0.3)" };
+      return { text: "Open", color: "#22d3ee", bg: "rgba(6,182,212,0.15)", border: "rgba(6,182,212,0.3)" };
     case "in_progress":
-      return { text: "处理中", color: "#c084fc", bg: "rgba(168,85,247,0.15)", border: "rgba(168,85,247,0.3)" };
+      return { text: "In Progress", color: "#c084fc", bg: "rgba(168,85,247,0.15)", border: "rgba(168,85,247,0.3)" };
     case "waiting":
-      return { text: "等待回复", color: "#fbbf24", bg: "rgba(245,158,11,0.15)", border: "rgba(245,158,11,0.3)" };
+      return { text: "Waiting", color: "#fbbf24", bg: "rgba(245,158,11,0.15)", border: "rgba(245,158,11,0.3)" };
     case "resolved":
-      return { text: "已解决", color: "#34d399", bg: "rgba(16,185,129,0.15)", border: "rgba(16,185,129,0.3)" };
+      return { text: "Resolved", color: "#34d399", bg: "rgba(16,185,129,0.15)", border: "rgba(16,185,129,0.3)" };
     case "closed":
-      return { text: "已关闭", color: "#64748b", bg: "rgba(100,116,139,0.15)", border: "rgba(100,116,139,0.3)" };
+      return { text: "Closed", color: "#64748b", bg: "rgba(100,116,139,0.15)", border: "rgba(100,116,139,0.3)" };
   }
 }
 
@@ -124,12 +124,12 @@ export default function SupportCenter() {
       const res = await supportFetch("/api/support/tickets");
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
-        throw new Error(body.error || `加载失败 (${res.status})`);
+        throw new Error(body.error || `Load failed (${res.status})`);
       }
       const data = await res.json();
       setTickets(data.tickets || []);
     } catch (e: any) {
-      setListError(e?.message || "网络错误");
+      setListError(e?.message || "Network error");
     } finally {
       setLoadingList(false);
     }
@@ -145,12 +145,12 @@ export default function SupportCenter() {
       const res = await supportFetch(`/api/support/tickets/${id}`);
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
-        throw new Error(body.error || `加载失败 (${res.status})`);
+        throw new Error(body.error || `Load failed (${res.status})`);
       }
       const data = (await res.json()) as TicketDetail;
       setDetail(data);
     } catch (e: any) {
-      setDetailError(e?.message || "网络错误");
+      setDetailError(e?.message || "Network error");
     } finally {
       setLoadingDetail(false);
     }
@@ -169,7 +169,7 @@ export default function SupportCenter() {
     <>
       <button
         onClick={() => setOpen((v) => !v)}
-        aria-label="工单"
+        aria-label="Support"
         style={{
           position: "fixed",
           right: 24,
@@ -188,7 +188,7 @@ export default function SupportCenter() {
           alignItems: "center",
           justifyContent: "center",
         }}
-        title={open ? "关闭工单中心" : "提交工单"}
+        title={open ? "Close support center" : "Submit a ticket"}
       >
         {open ? "×" : "✉"}
       </button>
@@ -230,8 +230,8 @@ export default function SupportCenter() {
           <div style={{ flex: 1, overflow: "hidden", display: "flex", flexDirection: "column" }}>
             {!loggedIn ? (
               <EmptyState
-                title="请先登录"
-                subtitle="登录广告主或 Publisher 账号后才能提交或查看工单。"
+                title="Please sign in"
+                subtitle="Sign in as an advertiser or publisher to submit or view tickets."
               />
             ) : view === "list" ? (
               <TicketList
@@ -270,7 +270,7 @@ export default function SupportCenter() {
                   );
                   if (!res.ok) {
                     const b = await res.json().catch(() => ({}));
-                    throw new Error(b.error || `发送失败 (${res.status})`);
+                    throw new Error(b.error || `Send failed (${res.status})`);
                   }
                   await loadDetail(activeId);
                   refreshList();
@@ -318,15 +318,15 @@ function Header({
             fontSize: 12,
           }}
         >
-          ← 返回
+          ← Back
         </button>
       )}
       <span style={{ fontWeight: 600 }}>
         {view === "list"
-          ? "我的工单"
+          ? "My Tickets"
           : view === "new"
-          ? "提交新工单"
-          : "工单详情"}
+          ? "New Ticket"
+          : "Ticket Detail"}
       </span>
       <div style={{ marginLeft: "auto", display: "flex", gap: 8 }}>
         {view === "list" && (
@@ -343,7 +343,7 @@ function Header({
               fontWeight: 600,
             }}
           >
-            + 新建
+            + New
           </button>
         )}
         <button
@@ -355,7 +355,7 @@ function Header({
             fontSize: 18,
             cursor: "pointer",
           }}
-          aria-label="关闭"
+          aria-label="Close"
         >
           ×
         </button>
@@ -402,7 +402,7 @@ function TicketList({
   onNew: () => void;
 }) {
   if (loading && !tickets) {
-    return <EmptyState title="加载中..." />;
+    return <EmptyState title="Loading..." />;
   }
   if (error) {
     return (
@@ -420,7 +420,7 @@ function TicketList({
             cursor: "pointer",
           }}
         >
-          重试
+          Retry
         </button>
       </div>
     );
@@ -439,9 +439,9 @@ function TicketList({
           textAlign: "center",
         }}
       >
-        <div style={{ color: "#cbd5e1", fontWeight: 600 }}>暂无工单</div>
+        <div style={{ color: "#cbd5e1", fontWeight: 600 }}>No tickets yet</div>
         <div style={{ color: "#64748b", fontSize: 12 }}>
-          遇到问题？点下方按钮提交第一张工单。
+          Hit a problem? Tap the button below to open your first ticket.
         </div>
         <button
           onClick={onNew}
@@ -457,7 +457,7 @@ function TicketList({
             fontWeight: 600,
           }}
         >
-          提交新工单
+          Submit a ticket
         </button>
       </div>
     );
@@ -548,7 +548,7 @@ function NewTicketForm({
     setSubmitting(true);
     setError(null);
     try {
-      const suffix = currentPath ? `\n\n(当前页面: ${currentPath})` : "";
+      const suffix = currentPath ? `\n\n(Current page: ${currentPath})` : "";
       const res = await supportFetch("/api/support/tickets", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -561,12 +561,12 @@ function NewTicketForm({
       });
       if (!res.ok) {
         const b = await res.json().catch(() => ({}));
-        throw new Error(b.error || `提交失败 (${res.status})`);
+        throw new Error(b.error || `Submit failed (${res.status})`);
       }
       const data = (await res.json()) as TicketDetail;
       onCreated(data);
     } catch (e: any) {
-      setError(e?.message || "网络错误");
+      setError(e?.message || "Network error");
     } finally {
       setSubmitting(false);
     }
@@ -574,7 +574,7 @@ function NewTicketForm({
 
   return (
     <div style={{ flex: 1, overflowY: "auto", padding: 14, display: "flex", flexDirection: "column", gap: 10 }}>
-      <Row label="分类">
+      <Row label="Category">
         <select
           value={category}
           onChange={(e) => setCategory(e.target.value)}
@@ -587,7 +587,7 @@ function NewTicketForm({
           ))}
         </select>
       </Row>
-      <Row label="优先级">
+      <Row label="Priority">
         <select
           value={priority}
           onChange={(e) => setPriority(e.target.value)}
@@ -600,21 +600,21 @@ function NewTicketForm({
           ))}
         </select>
       </Row>
-      <Row label="主题">
+      <Row label="Subject">
         <input
           value={subject}
           onChange={(e) => setSubject(e.target.value)}
           maxLength={200}
-          placeholder="简短描述问题"
+          placeholder="Short summary of the issue"
           style={inputStyle}
         />
       </Row>
-      <Row label="详情">
+      <Row label="Details">
         <textarea
           value={body}
           onChange={(e) => setBody(e.target.value)}
           rows={7}
-          placeholder="请尽量描述复现步骤、期望行为与实际行为；如涉及钱包/交易，附上地址或 txHash。"
+          placeholder="Describe steps to reproduce, expected vs actual behavior. If wallet/transaction related, include the address or txHash."
           style={{ ...inputStyle, resize: "vertical", minHeight: 140, fontFamily: "inherit" }}
         />
       </Row>
@@ -634,7 +634,7 @@ function NewTicketForm({
             fontSize: 13,
           }}
         >
-          取消
+          Cancel
         </button>
         <button
           onClick={submit}
@@ -658,7 +658,7 @@ function NewTicketForm({
               submitting || !subject.trim() || !body.trim() ? 0.6 : 1,
           }}
         >
-          {submitting ? "提交中..." : "提交工单"}
+          {submitting ? "Submitting..." : "Submit ticket"}
         </button>
       </div>
     </div>
@@ -714,10 +714,10 @@ function TicketDetailView({
   }, [detail?.messages?.length]);
 
   if (loading && !detail) {
-    return <EmptyState title="加载中..." />;
+    return <EmptyState title="Loading..." />;
   }
   if (error) {
-    return <EmptyState title="加载失败" subtitle={error} />;
+    return <EmptyState title="Load failed" subtitle={error} />;
   }
   if (!detail) return null;
 
@@ -733,7 +733,7 @@ function TicketDetailView({
       await onReply(text);
       setReply("");
     } catch (e: any) {
-      setReplyError(e?.message || "发送失败");
+      setReplyError(e?.message || "Send failed");
     } finally {
       setSending(false);
     }
@@ -813,7 +813,7 @@ function TicketDetailView({
                   gap: 8,
                 }}
               >
-                <span>{isSupport ? "AgentAd 支持" : m.authorName}</span>
+                <span>{isSupport ? "AgentAd Support" : m.authorName}</span>
                 <span style={{ color: "#475569" }}>
                   {formatTimestamp(m.createdAt)}
                 </span>
@@ -838,7 +838,7 @@ function TicketDetailView({
           value={reply}
           onChange={(e) => setReply(e.target.value)}
           rows={2}
-          placeholder={closed ? "该工单已关闭" : "追加一条回复..."}
+          placeholder={closed ? "This ticket is closed" : "Add a reply..."}
           disabled={closed || sending}
           style={{
             flex: 1,
@@ -871,7 +871,7 @@ function TicketDetailView({
             opacity: closed || sending || !reply.trim() ? 0.5 : 1,
           }}
         >
-          发送
+          Send
         </button>
       </div>
       {replyError && (

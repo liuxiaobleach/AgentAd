@@ -1,6 +1,7 @@
 "use client";
 
 import { apiFetch } from "@/lib/api";
+import AuditReplayPanel from "@/components/AuditReplayPanel";
 
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
@@ -243,7 +244,7 @@ function parseInitialAnalysisText(text: string): InitialAnalysisBlock[] {
     if (currentBlock) {
       blocks[currentBlock] = upsertBlockRow(
         blocks[currentBlock],
-        currentBlock === "文字内容" ? getFieldLabel(clean) : "补充说明",
+        currentBlock === "文字内容" ? getFieldLabel(clean) : "Notes",
         clean,
         isRiskText(clean)
       );
@@ -255,29 +256,29 @@ function parseInitialAnalysisText(text: string): InitialAnalysisBlock[] {
   );
   const normalizedTextRows: AnalysisRow[] = INITIAL_TEXT_FIELDS.map((field) => {
     const row = textRowsByKey.get(field);
-    return row || { key: field, value: "未发现", isRisk: false };
+    return row || { key: field, value: "Not found", isRisk: false };
   });
 
   const qrRows =
     blocks["二维码实体"].length > 0
       ? blocks["二维码实体"]
-      : [{ key: "二维码信息", value: "未发现", isRisk: false }];
+      : [{ key: "QR Info", value: "Not found", isRisk: false }];
 
   const extraRows =
     blocks["其他提取信息"].length > 0
       ? blocks["其他提取信息"]
-      : [{ key: "补充信息", value: "未进一步提取", isRisk: false }];
+      : [{ key: "Extra Info", value: "No additional information extracted", isRisk: false }];
 
   const linkRows =
     blocks["网站链接实体"].length > 0
       ? blocks["网站链接实体"]
-      : [{ key: "网站链接", value: "未发现", isRisk: false }];
+      : [{ key: "Website Link", value: "Not found", isRisk: false }];
 
   return [
-    { title: "文字内容", rows: normalizedTextRows },
-    { title: "其他提取信息", rows: extraRows },
-    { title: "二维码实体", rows: qrRows },
-    { title: "网站链接实体", rows: linkRows },
+    { title: "Text Content", rows: normalizedTextRows },
+    { title: "Extra Extracted Info", rows: extraRows },
+    { title: "QR Code Entities", rows: qrRows },
+    { title: "Website Link Entities", rows: linkRows },
   ];
 }
 
@@ -339,7 +340,7 @@ function parseAnalysisText(text: string): { sections: AnalysisSection[] } {
         current.rows.push({ key: "", value: content, isRisk: isRiskText(content) });
       }
     } else {
-      // Regular line — try key:value split for lines like **标题：** xxx
+      // Regular line — try key:value split for lines like **Title:** xxx
       const clean = cleanDisplayText(trimmed);
       if (!clean) continue;
       const colonIdx = clean.indexOf("：") !== -1 ? clean.indexOf("：") : clean.indexOf(":");
@@ -450,10 +451,10 @@ function buildQRCodeVerificationStep(
   const summaryParts: string[] = [];
 
   if (payloads.length > 0) {
-    summaryParts.push(`识别到 ${payloads.length} 条二维码内容`);
+    summaryParts.push(`recognized ${payloads.length} QR payload${payloads.length > 1 ? "s" : ""}`);
   }
   if (urls.length > 0) {
-    summaryParts.push(`提取到 ${urls.length} 个二维码链接`);
+    summaryParts.push(`extracted ${urls.length} QR link${urls.length > 1 ? "s" : ""}`);
   }
 
   return {
@@ -462,9 +463,9 @@ function buildQRCodeVerificationStep(
     text:
       hasDetectedQRCode(payload)
         ? summaryParts.length > 0
-          ? `系统已完成二维码验证。${summaryParts.join("，")}。`
-          : "系统已完成二维码验证，并识别到图片中的二维码内容。"
-        : "系统已执行二维码验证，但当前工具未成功解码出二维码内容。Agent 仍然根据图片可见元素判断该素材包含二维码，建议结合人工复核继续审核。",
+          ? `QR verification complete. ${summaryParts.join("; ")}.`
+          : "QR verification complete — QR content detected in the image."
+        : "QR verification ran, but the tool did not decode any payload. The agent still judged this creative to contain a QR code based on visible elements; manual review is recommended.",
     toolCalls: [
       {
         name: "qr_decode",
@@ -507,7 +508,7 @@ export default function AuditCaseDetailPage() {
   const { id } = useParams();
   const router = useRouter();
   const [auditCase, setAuditCase] = useState<any>(null);
-  const [activeTab, setActiveTab] = useState<"thinking" | "evidence" | "summary">("thinking");
+  const [activeTab, setActiveTab] = useState<"thinking" | "replay" | "evidence" | "summary">("thinking");
   const [expandedTurns, setExpandedTurns] = useState<Set<number>>(new Set([0]));
   const [rerunning, setRerunning] = useState(false);
 
@@ -609,6 +610,7 @@ export default function AuditCaseDetailPage() {
             <div className="flex border-b border-slate-200">
               {[
                 { key: "thinking", label: "Agent Thinking", count: thinkingSteps.length },
+                { key: "replay", label: "Audit Replay", count: thinkingSteps.length },
                 { key: "evidence", label: "Evidence", count: auditCase.evidences?.length || 0 },
                 { key: "summary", label: "Summary" },
               ].map((tab) => (
@@ -886,6 +888,17 @@ export default function AuditCaseDetailPage() {
                 </div>
               )}
 
+              {activeTab === "replay" && (
+                <AuditReplayPanel
+                  steps={thinkingSteps}
+                  status={auditCase.status}
+                  decision={auditCase.decision || null}
+                  riskScore={auditCase.riskScore ?? null}
+                  summary={auditCase.summary || null}
+                  evidenceCount={auditCase.evidences?.length || 0}
+                />
+              )}
+
               {/* ==================== EVIDENCE TAB ==================== */}
               {activeTab === "evidence" && (
                 <div className="space-y-4">
@@ -997,7 +1010,7 @@ function InitialAnalysisCard({ blocks }: { blocks: InitialAnalysisBlock[] }) {
     <div className="space-y-4">
       <div className="rounded-xl overflow-hidden" style={{ border: "1px solid rgba(6,182,212,0.2)" }}>
         <div className="px-4 py-3 border-b" style={{ background: "linear-gradient(90deg, rgba(6,182,212,0.12), rgba(56,189,248,0.08))", borderColor: "rgba(6,182,212,0.2)" }}>
-          <h4 className="text-sm font-bold tracking-wide" style={{ color: "#22d3ee", textShadow: "0 0 10px rgba(6,182,212,0.5)" }}>图片内容分析</h4>
+          <h4 className="text-sm font-bold tracking-wide" style={{ color: "#22d3ee", textShadow: "0 0 10px rgba(6,182,212,0.5)" }}>Image Content Analysis</h4>
         </div>
 
         <div className="p-4 space-y-4">
@@ -1011,10 +1024,10 @@ function InitialAnalysisCard({ blocks }: { blocks: InitialAnalysisBlock[] }) {
                 <thead>
                   <tr>
                     <th className="w-1/3 text-left px-4 py-2.5 text-xs font-medium" style={{ background: "rgba(6,182,212,0.06)", color: "#64748b" }}>
-                      {block.title === "其他提取信息" ? "属性" : "字段"}
+                      {block.title === "Extra Extracted Info" ? "Attribute" : "Field"}
                     </th>
                     <th className="text-left px-4 py-2.5 text-xs font-medium" style={{ background: "rgba(15,23,42,0.4)", color: "#64748b" }}>
-                      内容
+                      Content
                     </th>
                   </tr>
                 </thead>

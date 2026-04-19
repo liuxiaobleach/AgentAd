@@ -11,12 +11,12 @@ const STRATEGY_PRESETS = [
     name: "Growth Aggressive",
     icon: "\u{1F680}",
     desc: "Maximize impressions and clicks. Willing to pay premium prices for high-CTR slots.",
-    prompt: `增长型激进策略：
-- 优先选择预测 CTR 最高的素材，即使成本较高
-- strategy_multiplier 取 1.3-1.5
-- 对于匹配度高的广告位（placementFit > 0.7），大胆提高出价
-- 如果历史 CTR 表现好（> 0.015），再额外加 10% 出价
-- 宁可多花钱也不错过优质展示机会`,
+    prompt: `Aggressive growth strategy:
+- Prefer creatives with the highest predicted CTR, even at higher cost
+- strategy_multiplier in [1.3, 1.5]
+- For high-fit placements (placementFit > 0.7), bid boldly higher
+- If historical CTR is strong (> 0.015), add an extra 10% to the bid
+- Better to overspend than miss a premium impression`,
     vpc: 2.5,
     maxBid: 60,
   },
@@ -25,12 +25,12 @@ const STRATEGY_PRESETS = [
     name: "Balanced",
     icon: "\u2696\uFE0F",
     desc: "Balance between CTR performance and cost efficiency. Best for steady campaigns.",
-    prompt: `均衡型策略：
-- 综合考虑素材的 placementFit、targetAudience 匹配度和历史 CTR
-- strategy_multiplier 取 0.95-1.1
-- 如果 floor_cpm 超过 value_per_click * predicted_ctr * 800，则降低出价意愿
-- 优选有历史表现数据的素材，减少不确定性
-- 避免对低匹配度的广告位过度出价`,
+    prompt: `Balanced strategy:
+- Jointly weigh the creative's placementFit, targetAudience match, and historical CTR
+- strategy_multiplier in [0.95, 1.1]
+- If floor_cpm exceeds value_per_click * predicted_ctr * 800, reduce willingness to bid
+- Prefer creatives that have historical performance data to reduce uncertainty
+- Avoid overbidding on low-fit placements`,
     vpc: 1.5,
     maxBid: 35,
   },
@@ -39,12 +39,12 @@ const STRATEGY_PRESETS = [
     name: "Budget Saver",
     icon: "\u{1F6E1}\uFE0F",
     desc: "Minimize cost per click. Only bid on high-confidence opportunities.",
-    prompt: `保守节约策略：
-- 只对 placementFit > 0.6 且 audience 匹配度高的广告位出价
-- strategy_multiplier 取 0.6-0.8
-- 优先选择有历史 CTR 数据且表现稳定的素材
-- 如果 floor_cpm > max_bid_cpm * 0.5，倾向于不参与
-- 严格控制每次出价不超过预期回报`,
+    prompt: `Conservative budget-saver strategy:
+- Only bid on placements with placementFit > 0.6 and strong audience match
+- strategy_multiplier in [0.6, 0.8]
+- Prefer creatives with historical CTR data and stable performance
+- If floor_cpm > max_bid_cpm * 0.5, lean toward skipping
+- Strictly cap each bid at or below expected return`,
     vpc: 1.0,
     maxBid: 20,
   },
@@ -53,12 +53,12 @@ const STRATEGY_PRESETS = [
     name: "CTR Optimizer",
     icon: "\u{1F3AF}",
     desc: "Focus on maximizing click-through rate. Chooses the best-matching creative for each slot.",
-    prompt: `CTR 优化策略：
-- 最核心目标：最大化点击率
-- 仔细分析每个候选素材的 targetAudiences 与 bid request 的 userSegments 的重合度
-- 选择 placementFit 中当前 slotType 分数最高的素材
-- 如果素材有历史 CTR 数据，优先选择历史 CTR > 0.012 的
-- strategy_multiplier 取 1.0-1.2，在 CTR 预测高时适当提高`,
+    prompt: `CTR optimization strategy:
+- Primary goal: maximize click-through rate
+- For each candidate, carefully analyze overlap between its targetAudiences and the bid request's userSegments
+- Pick the creative whose placementFit scores highest for the current slotType
+- If a creative has historical CTR data, prefer those with historical CTR > 0.012
+- strategy_multiplier in [1.0, 1.2], raise moderately when predicted CTR is high`,
     vpc: 2.0,
     maxBid: 45,
   },
@@ -67,12 +67,12 @@ const STRATEGY_PRESETS = [
     name: "Audience Matcher",
     icon: "\u{1F465}",
     desc: "Prioritize audience relevance. Best when your creatives target specific user segments.",
-    prompt: `受众优先策略：
-- 最核心目标：素材的 targetAudiences 与 userSegments 的匹配度
-- 如果素材的目标受众和当前用户画像高度重合（>= 2 个 segment 匹配），大幅提高出价（multiplier 1.3）
-- 如果没有任何受众重合，即使 floor_cpm 很低也倾向不参与
-- 选材时优先看 audience 匹配，其次看 placementFit
-- strategy_multiplier 取 0.8-1.3，视匹配度动态调整`,
+    prompt: `Audience-first strategy:
+- Primary goal: overlap between the creative's targetAudiences and the userSegments
+- If the creative's target audience strongly overlaps with the current user (>= 2 segment matches), bid aggressively (multiplier 1.3)
+- If there is zero audience overlap, lean toward skipping even when floor_cpm is low
+- When picking a creative, prioritize audience match first, placementFit second
+- strategy_multiplier in [0.8, 1.3], adjust dynamically based on match quality`,
     vpc: 1.8,
     maxBid: 40,
   },
@@ -94,42 +94,42 @@ const AGENT_SKILLS = [
     name: "Audience Matching",
     icon: "\u{1F465}",
     desc: "Match creative target audiences with bid request user segments",
-    promptSnippet: "\n[Skill: Audience Matching] 分析素材的 targetAudiences 和请求的 userSegments，计算重合度。重合度高的素材优先选择。",
+    promptSnippet: "\n[Skill: Audience Matching] Analyze overlap between the creative's targetAudiences and the request's userSegments. Prefer creatives with higher overlap.",
   },
   {
     id: "historical_learning",
     name: "Historical Learning",
     icon: "\u{1F4CA}",
     desc: "Leverage historical CTR data to improve predictions",
-    promptSnippet: "\n[Skill: Historical Learning] 如果素材有 recentStats，用实际 CTR 替代 prior。如果历史展示 > 100 次，给予更高置信度。",
+    promptSnippet: "\n[Skill: Historical Learning] If the creative has recentStats, use its actual CTR instead of the prior. If historical impressions > 100, apply higher confidence.",
   },
   {
     id: "budget_pacing",
     name: "Budget Pacing",
     icon: "\u{23F1}\uFE0F",
     desc: "Control spending rate to distribute budget evenly",
-    promptSnippet: "\n[Skill: Budget Pacing] 如果已出价次数较多，逐步降低 strategy_multiplier（减少 0.05/轮），避免预算集中消耗。",
+    promptSnippet: "\n[Skill: Budget Pacing] If the agent has already bid many times, gradually reduce strategy_multiplier (by 0.05 per round) to avoid burning the budget too fast.",
   },
   {
     id: "floor_awareness",
     name: "Floor Price Awareness",
     icon: "\u{1F4B0}",
     desc: "Optimize bids relative to floor price for better margins",
-    promptSnippet: "\n[Skill: Floor Awareness] 分析 floor_cpm 与预期回报的比值。如果 floor_cpm > predicted_ctr * value_per_click * 700，降低出价或不参与。",
+    promptSnippet: "\n[Skill: Floor Awareness] Analyze the ratio of floor_cpm to expected return. If floor_cpm > predicted_ctr * value_per_click * 700, lower the bid or skip.",
   },
   {
     id: "creative_rotation",
     name: "Creative Rotation",
     icon: "\u{1F504}",
     desc: "Avoid over-using a single creative to prevent ad fatigue",
-    promptSnippet: "\n[Skill: Creative Rotation] 如果某素材近期展示次数 > 500，优先尝试其他素材，避免用户疲劳。",
+    promptSnippet: "\n[Skill: Creative Rotation] If a creative's recent impressions > 500, prefer trying a different creative to avoid user fatigue.",
   },
   {
     id: "slot_specialization",
     name: "Slot Specialization",
     icon: "\u{1F4F1}",
     desc: "Specialize bidding strategy per slot type (mobile vs desktop)",
-    promptSnippet: "\n[Skill: Slot Specialization] mobile-banner 更适合直接转化型素材（CTA 强）；desktop-rectangle 适合信息丰富型素材；native-feed 适合教育型内容。根据 slotType 调整选材偏好。",
+    promptSnippet: "\n[Skill: Slot Specialization] mobile-banner works best with conversion-focused creatives (strong CTA); desktop-rectangle suits information-rich creatives; native-feed suits educational content. Adjust creative preference based on slotType.",
   },
 ];
 

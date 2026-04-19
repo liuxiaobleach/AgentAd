@@ -23,6 +23,7 @@ Thumbs.db
 # Node.js
 node_modules/
 .next/
+.next-dev/
 .turbo/
 dist/
 build/

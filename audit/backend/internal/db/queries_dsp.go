@@ -191,6 +191,35 @@ func (q *Queries) GetBidderAgent(ctx context.Context, id string) (BidderAgent, e
 	return scanBidderAgent(q.Pool.QueryRow(ctx, sql, id))
 }
 
+func (q *Queries) CreateBidderAgent(ctx context.Context, advertiserID, name, strategy string, strategyPrompt *string, vpc, maxBid float64, dailyBudgetAtomic, hourlyBudgetAtomic int64) (BidderAgent, error) {
+	id := "ba_" + newID()[1:13]
+	const sql = `
+		INSERT INTO bidder_agents
+		  (id, advertiser_id, name, strategy, strategy_prompt, value_per_click,
+		   max_bid_cpm, daily_budget_atomic, hourly_budget_atomic, status)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'ACTIVE')
+		RETURNING ` + bidderAgentSelectCols
+	return scanBidderAgent(q.Pool.QueryRow(ctx, sql,
+		id, advertiserID, name, strategy, strategyPrompt,
+		vpc, maxBid, dailyBudgetAtomic, hourlyBudgetAtomic,
+	))
+}
+
+// DeleteBidderAgent removes an agent and all its spend-window rows. Only
+// affects rows whose advertiser_id matches, so callers can pass the JWT-derived
+// advertiser ID as a hard ownership gate.
+func (q *Queries) DeleteBidderAgent(ctx context.Context, id, advertiserID string) error {
+	const sql = `DELETE FROM bidder_agents WHERE id = $1 AND advertiser_id = $2`
+	ct, err := q.Pool.Exec(ctx, sql, id, advertiserID)
+	if err != nil {
+		return err
+	}
+	if ct.RowsAffected() == 0 {
+		return fmt.Errorf("bidder agent not found or not owned by advertiser")
+	}
+	return nil
+}
+
 func (q *Queries) UpdateBidderAgent(ctx context.Context, id string, strategy string, strategyPrompt *string, vpc, maxBid float64) error {
 	const sql = `
 		UPDATE bidder_agents SET strategy=$1, strategy_prompt=$2,

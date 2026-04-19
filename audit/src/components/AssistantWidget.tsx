@@ -8,7 +8,7 @@ type Msg = { role: "user" | "assistant"; content: string };
 const INITIAL_GREETING: Msg = {
   role: "assistant",
   content:
-    "你好！我是 AgentAd 的站内 AI 客服。我只回答与本平台相关的问题，比如各个页面怎么用、如何预存预算、怎么领取收益等。想了解哪一部分？",
+    "Hi! I'm AgentAd's in-app AI assistant. I only answer questions about this platform — how each page works, how to deposit budget, how publishers claim earnings, etc. What would you like to know?",
 };
 
 export default function AssistantWidget() {
@@ -45,15 +45,15 @@ export default function AssistantWidget() {
       });
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
-        throw new Error(body.error || `请求失败（${res.status}）`);
+        throw new Error(body.error || `Request failed (${res.status})`);
       }
       const data = await res.json();
       setMessages((prev) => [
         ...prev,
-        { role: "assistant", content: data.reply || "（无内容）" },
+        { role: "assistant", content: data.reply || "(no content)" },
       ]);
     } catch (e: any) {
-      setError(e?.message || "网络错误");
+      setError(e?.message || "Network error");
     } finally {
       setSending(false);
     }
@@ -71,7 +71,7 @@ export default function AssistantWidget() {
       {/* Floating button */}
       <button
         onClick={() => setOpen((v) => !v)}
-        aria-label="打开 AI 客服"
+        aria-label="Open AI assistant"
         style={{
           position: "fixed",
           right: 24,
@@ -130,9 +130,9 @@ export default function AssistantWidget() {
                 boxShadow: "0 0 6px #10b981",
               }}
             />
-            <span style={{ fontWeight: 600 }}>AgentAd 客服</span>
+            <span style={{ fontWeight: 600 }}>AgentAd Assistant</span>
             <span style={{ fontSize: 11, color: "#64748b", marginLeft: "auto" }}>
-              只回答站内问题
+              Platform questions only
             </span>
           </div>
 
@@ -165,7 +165,7 @@ export default function AssistantWidget() {
             ))}
             {sending && (
               <div style={{ color: "#64748b", fontSize: 12, fontStyle: "italic" }}>
-                正在思考...
+                Thinking...
               </div>
             )}
             {error && (
@@ -186,7 +186,7 @@ export default function AssistantWidget() {
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={onKey}
               rows={2}
-              placeholder="问问这个平台的任何用法..."
+              placeholder="Ask anything about how this platform works..."
               style={{
                 flex: 1,
                 background: "#070b14",
@@ -214,7 +214,7 @@ export default function AssistantWidget() {
                 opacity: sending || !input.trim() ? 0.6 : 1,
               }}
             >
-              发送
+              Send
             </button>
           </div>
         </div>
