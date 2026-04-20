@@ -280,6 +280,18 @@ type AuditCase struct {
 	SubmittedAt   time.Time       `json:"submittedAt"`
 	CompletedAt   *time.Time      `json:"completedAt"`
 
+	// Ops review fields — set when a human reviewer has acted on the case.
+	ReviewerID   *string    `json:"reviewerId,omitempty"`
+	ReviewerName string     `json:"reviewerName,omitempty"`
+	ReviewNotes  *string    `json:"reviewNotes,omitempty"`
+	ReviewedAt   *time.Time `json:"reviewedAt,omitempty"`
+
+	// Advertiser info (populated for ops-facing listings only; advertisers
+	// reading their own cases don't need it).
+	AdvertiserID    string `json:"advertiserId,omitempty"`
+	AdvertiserName  string `json:"advertiserName,omitempty"`
+	AdvertiserEmail string `json:"advertiserEmail,omitempty"`
+
 	// Joined
 	Creative    *CreativeSummary `json:"creative,omitempty"`
 	Evidences   []AuditEvidence  `json:"evidences,omitempty"`

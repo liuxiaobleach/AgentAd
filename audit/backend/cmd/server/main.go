@@ -51,6 +51,7 @@ func main() {
 	// Public routes (no auth)
 	r.Post("/api/auth/login", h.Login)
 	r.Post("/api/publisher/auth/login", h.PublisherLogin)
+	r.Post("/api/ops/auth/login", h.OpsLogin)
 	r.Post("/api/sdk/verify", h.SDKVerify)
 	r.Get("/api/manifests/{id}", h.GetManifest)
 	r.Post("/api/ad-slot/request", h.RequestAdSlot)
@@ -128,6 +129,16 @@ func main() {
 		r.Get("/api/support/tickets", h.ListSupportTickets)
 		r.Get("/api/support/tickets/{id}", h.GetSupportTicket)
 		r.Post("/api/support/tickets/{id}/messages", h.AppendSupportMessage)
+
+		// Ops-only routes (manual-review console)
+		r.Group(func(r chi.Router) {
+			r.Use(handler.RequireOpsMiddleware)
+			r.Get("/api/ops/me", h.GetOpsMe)
+			r.Get("/api/ops/audit-queue", h.ListOpsAuditQueue)
+			r.Get("/api/ops/audit-cases/{id}", h.GetOpsAuditCase)
+			r.Patch("/api/ops/audit-cases/{id}", h.PatchOpsAuditCase)
+			r.Get("/api/ops/audit-reviews", h.ListOpsReviewHistory)
+		})
 
 		// Publisher-only routes
 		r.Group(func(r chi.Router) {

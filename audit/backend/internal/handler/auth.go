@@ -34,16 +34,20 @@ type LoginResponse struct {
 }
 
 type TokenClaims struct {
-	AdvertiserID string `json:"sub"`           // advertiser id, "" for publisher tokens
-	PublisherID  string `json:"pub,omitempty"` // publisher id, "" for advertiser tokens
+	AdvertiserID string `json:"sub"`           // advertiser id, "" for non-advertiser tokens
+	PublisherID  string `json:"pub,omitempty"` // publisher id, "" for non-publisher tokens
+	OpsID        string `json:"ops,omitempty"` // ops reviewer id, "" for non-ops tokens
 	Email        string `json:"email"`
 	Name         string `json:"name"`
-	Role         string `json:"role,omitempty"` // "advertiser" (default/empty) | "publisher"
+	Role         string `json:"role,omitempty"` // "advertiser" | "publisher" | "ops"
 	Exp          int64  `json:"exp"`
 }
 
 // IsPublisher is true when the token was issued to a publisher account.
 func (c *TokenClaims) IsPublisher() bool { return c.Role == "publisher" }
+
+// IsOps is true when the token was issued to an ops reviewer account.
+func (c *TokenClaims) IsOps() bool { return c.Role == "ops" }
 
 func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 	var req LoginRequest
