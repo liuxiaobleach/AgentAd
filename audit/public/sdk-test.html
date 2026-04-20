@@ -1,43 +1,87 @@
 <!DOCTYPE html>
-<html>
+<html lang="zh-CN">
 <head>
   <meta charset="UTF-8" />
-  <title>AgentAd SDK test</title>
+  <title>AgentAd SDK — auction + rewards test</title>
   <style>
-    body { font-family: -apple-system, BlinkMacSystemFont, sans-serif; background:#f1f5f9; padding:32px; }
-    .page { display: grid; grid-template-columns: 1fr 320px; gap: 24px; max-width: 1100px; margin: 0 auto; }
-    .article { background:#fff; padding:24px; border-radius:12px; }
+    body { font-family: -apple-system, BlinkMacSystemFont, sans-serif; background:#f1f5f9; padding:32px; color:#0f172a; }
+    h2 { margin-bottom:8px; }
+    .sub { color:#64748b; margin-bottom:20px; font-size:13px; }
+    .page { display: grid; grid-template-columns: 1fr 340px; gap: 24px; max-width: 1180px; margin: 0 auto; }
+    .article { background:#fff; padding:24px; border-radius:12px; border:1px solid #e2e8f0; }
     .rail { display:flex; flex-direction:column; gap:16px; }
     .slot { background:#fff; border-radius:12px; overflow:hidden; border:1px solid #e2e8f0; }
-    .label { padding:8px 12px; background:#f8fafc; border-bottom:1px solid #e2e8f0; font-size:10px; color:#94a3b8; text-transform:uppercase; }
-    #log { background:#0f172a; color:#a7f3d0; padding:12px; font-family:ui-monospace,Menlo,monospace; font-size:11px; border-radius:8px; max-height:300px; overflow:auto; }
-    input, select { padding:6px; font-size:12px; border:1px solid #cbd5e1; border-radius:6px; margin-right:6px; }
+    .label { padding:8px 12px; background:#f8fafc; border-bottom:1px solid #e2e8f0; font-size:10px; color:#94a3b8; text-transform:uppercase; letter-spacing:.05em; }
+    #log { background:#0f172a; color:#a7f3d0; padding:12px; font-family:ui-monospace,Menlo,monospace; font-size:11px; border-radius:8px; max-height:260px; overflow:auto; }
+    .controls { background:#fff; border:1px solid #e2e8f0; border-radius:12px; padding:14px; display:flex; flex-direction:column; gap:8px; font-size:12px; }
+    .controls label { display:flex; flex-direction:column; font-size:11px; color:#475569; }
+    .controls input, .controls select { padding:6px; font-size:12px; border:1px solid #cbd5e1; border-radius:6px; margin-top:2px; }
+    button { padding:8px 12px; font-size:12px; border:none; border-radius:8px; background:#3b82f6; color:#fff; cursor:pointer; font-weight:600; }
+    button:hover { background:#2563eb; }
+    button:disabled { opacity:.5; cursor:not-allowed; }
+    .earnings { background:#fff; border:1px solid #e2e8f0; border-radius:12px; padding:14px; font-size:12px; }
+    .earnings .num { font-size:22px; font-weight:700; color:#0f172a; }
+    .earnings .row { display:flex; justify-content:space-between; margin-top:6px; color:#475569; }
+    .earnings .delta { color:#16a34a; font-weight:600; }
   </style>
 </head>
 <body>
   <h2>AgentAd SDK integration test</h2>
-
-  <p style="margin-bottom:16px;">
-    Manifest ID:
-    <input id="mf" value="c195b9dfaeb56a4b9aceea3d2" size="28" />
-    failMode:
-    <select id="failmode">
-      <option value="closed">closed</option>
-      <option value="open">open</option>
-    </select>
-    <button onclick="remount()">Remount</button>
+  <p class="sub">
+    Runs a real bidder-agent auction via <code>/api/ad-slot/request</code>, charges the
+    winning advertiser, and credits the publisher. Watch the earnings panel update after
+    each successful impression.
   </p>
 
   <div class="page">
     <div class="article">
       <h3>Simulated publisher article</h3>
-      <p>Some content… the SDK renders the ad in the rail.</p>
+      <p>Content… the SDK renders the auction-winning creative in the rail.</p>
+      <p style="color:#64748b;font-size:13px;margin-top:16px;">
+        Slot <code id="slot-display">test_slot_001</code> is pre-mapped to publisher
+        <code>pub_demo</code>. Earnings aggregate there and are queryable from the publisher portal.
+      </p>
     </div>
+
     <div class="rail">
+      <div class="controls">
+        <label>Slot ID
+          <input id="slot-id" value="test_slot_001" />
+        </label>
+        <label>Site category
+          <select id="site-cat">
+            <option value="news" selected>news</option>
+            <option value="defi">defi</option>
+            <option value="nft">nft</option>
+            <option value="gaming">gaming</option>
+            <option value="exchange">exchange</option>
+          </select>
+        </label>
+        <label>Floor CPM ($)
+          <input id="floor" type="number" value="5" step="0.5" min="0" />
+        </label>
+        <label>User segments (csv)
+          <input id="segments" value="wallet-user,defi-trader" />
+        </label>
+        <button id="btn-remount">Remount / new auction</button>
+      </div>
+
       <div class="slot">
         <div class="label">Sponsored</div>
         <div id="agentad-ad-slot" style="min-height:200px;"></div>
       </div>
+
+      <div class="earnings" id="earnings-panel">
+        <div style="font-size:11px;color:#64748b;">Publisher earnings (atomic USDC, 6 dp)</div>
+        <div class="num" id="earnings-total">— <span style="font-size:11px;font-weight:400;color:#64748b;">(login to view)</span></div>
+        <div class="row"><span>Unclaimed</span><span id="earnings-unclaimed">—</span></div>
+        <div class="row"><span>Last delta</span><span class="delta" id="earnings-delta">—</span></div>
+        <div style="font-size:11px;color:#64748b;margin-top:8px;">
+          Signed out? See the credit land directly via:
+          <code style="font-size:10px;">SELECT * FROM publisher_earning_events ORDER BY created_at DESC;</code>
+        </div>
+      </div>
+
       <pre id="log"></pre>
     </div>
   </div>
@@ -46,30 +90,103 @@
   <script>
     const BACKEND = 'http://localhost:8080';
     let handle = null;
+    let lastEarnings = null;
+
     const log = (msg, data) => {
       const el = document.getElementById('log');
-      el.textContent += '[' + new Date().toLocaleTimeString() + '] ' + msg + (data ? ' ' + JSON.stringify(data, null, 2) : '') + '\n';
+      el.textContent += '[' + new Date().toLocaleTimeString() + '] ' + msg +
+        (data !== undefined ? ' ' + JSON.stringify(data) : '') + '\n';
       el.scrollTop = el.scrollHeight;
     };
 
-    function remount() {
-      if (handle) handle.destroy();
-      const id = document.getElementById('mf').value.trim();
-      const failMode = document.getElementById('failmode').value;
-      log('mounting manifestUrl=' + BACKEND + '/api/manifests/' + id + ' failMode=' + failMode);
+    // We can't hit the protected /api/publisher/earnings endpoint without a login
+    // from the test page. But the Go backend also exposes the same data via a
+    // diagnostics hook? → there isn't one yet. Instead we poll a public read via
+    // a lightweight workaround: compare to prior snapshot after each auction.
+    //
+    // For now we surface the delta through the auction log itself (each settled
+    // impression logs an `earnings credited` line in the backend). The panel
+    // below stays a placeholder; open the publisher portal to see concrete numbers.
+
+    async function pollEarningsDelta() {
+      // Best-effort: /api/publisher/earnings needs a publisher session cookie.
+      // If not logged in, we just mark "login required" — the credit is still
+      // landing in the DB; the ad-test page's publisher portal will show it.
+      try {
+        const r = await fetch(BACKEND + '/api/publisher/earnings', { credentials: 'include' });
+        if (!r.ok) throw new Error('auth required');
+        const j = await r.json();
+        const totalAtomic = Number(j.totalEarnedAtomic || 0);
+        const unclaimedAtomic = Number(j.unclaimedAtomic || 0);
+
+        document.getElementById('earnings-total').textContent = totalAtomic;
+        document.getElementById('earnings-unclaimed').textContent = unclaimedAtomic;
+
+        if (lastEarnings !== null) {
+          const delta = totalAtomic - lastEarnings;
+          document.getElementById('earnings-delta').textContent =
+            (delta > 0 ? '+' : '') + delta + ' atomic';
+        }
+        lastEarnings = totalAtomic;
+      } catch (e) {
+        document.getElementById('earnings-delta').textContent = 'login required — check DB / publisher portal';
+      }
+    }
+
+    function mountSDK() {
+      if (handle) { handle.destroy(); handle = null; }
+      const slotId = document.getElementById('slot-id').value.trim() || 'test_slot_001';
+      const siteCat = document.getElementById('site-cat').value;
+      const floor = parseFloat(document.getElementById('floor').value) || 0;
+      const segs = document.getElementById('segments').value
+        .split(',').map(s => s.trim()).filter(Boolean);
+
+      document.getElementById('slot-display').textContent = slotId;
+      log('mount slotId=' + slotId + ' cat=' + siteCat + ' floor=$' + floor);
+
       handle = AgentAdSDK.mount({
         container: '#agentad-ad-slot',
-        manifestUrl: BACKEND + '/api/manifests/' + id,
-        verifyMode: 'api-first',
+        platformOrigin: BACKEND,
+        slot: {
+          slotId: slotId,
+          slotType: 'desktop-rectangle',
+          size: '300x250',
+          floorCpm: floor,
+          siteCategory: siteCat,
+          userSegments: segs,
+        },
         badgePosition: 'top-right',
-        failMode: failMode,
-        onVerified: r => log('onVerified', { decision: r.decision, status: r.verify.status }),
-        onMismatch: r => log('onMismatch', { status: r.verify.status }),
-        onExpired:  r => log('onExpired',  { status: r.verify.status }),
+        onAuction: r => {
+          if (r.phase === 'requested') log('auction created', { id: r.auctionId.substring(0,8) });
+          else if (r.phase === 'pending') log('bidding…', { bids: r.bidsCount });
+          else if (r.phase === 'completed') {
+            const winner = (r.result.bids || []).find(b => b.isWinner);
+            log('auction settled', {
+              settlement: r.result.settlementPrice,
+              winner: winner ? winner.agentName : null,
+              bids: (r.result.bids || []).length,
+            });
+          }
+        },
+        onRendered: r => {
+          log('creative rendered', {
+            creative: r.result.creative ? r.result.creative.creativeName : null,
+            project: r.result.creative ? r.result.creative.projectName : null,
+          });
+          // Give the backend a tick to settle + credit publisher, then poll.
+          setTimeout(pollEarningsDelta, 500);
+        },
+        onClickTracked: r => {
+          log('click tracked', { id: r.auctionId.substring(0, 8) });
+          // Give backend a moment to run chargeClick + creditPublisher.
+          setTimeout(pollEarningsDelta, 800);
+        },
+        onError: e => log('ERROR', { msg: e.message }),
       });
     }
 
-    remount();
+    document.getElementById('btn-remount').addEventListener('click', mountSDK);
+    mountSDK();
   </script>
 </body>
 </html>

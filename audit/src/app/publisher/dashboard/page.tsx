@@ -21,9 +21,8 @@ import {
 } from "@/lib/publisher-api";
 import {
   AnimatedUsdc,
-  ClaimProgress,
+  ClaimProgressModal,
   ConfettiBurst,
-  TxHashPill,
 } from "@/components/ClaimAnimation";
 
 type PublisherWallet = {
@@ -176,6 +175,7 @@ export default function PublisherDashboardPage() {
   const [claimStep, setClaimStep] = useState<number>(-1);
   const [claimErrorIndex, setClaimErrorIndex] = useState<number | null>(null);
   const [claimTxHash, setClaimTxHash] = useState<string | null>(null);
+  const [claimAmountDisplay, setClaimAmountDisplay] = useState<string>("");
   const [confettiKey, setConfettiKey] = useState<number>(0);
 
   const normalizedConnectedWallet = useMemo(
@@ -352,6 +352,12 @@ export default function PublisherDashboardPage() {
     setStatus(null);
     setClaimTxHash(null);
     setClaimErrorIndex(null);
+    setClaimAmountDisplay(
+      amountNum.toLocaleString(undefined, {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 4,
+      })
+    );
     setClaimStep(0);
     let activeStep = 0;
     try {
@@ -472,22 +478,22 @@ export default function PublisherDashboardPage() {
           </div>
         </div>
 
-        {/* Claim flow: animated stepper replaces the generic status banner */}
-        {claimStep >= 0 && (
-          <div className="space-y-3">
-            <ClaimProgress
-              stepIndex={claimStep}
-              errorIndex={claimErrorIndex}
-              errorMessage={claimErrorIndex !== null ? error : null}
-            />
-            {claimTxHash && (
-              <TxHashPill
-                txHash={claimTxHash}
-                explorerBaseUrl={wallet?.explorerBaseUrl}
-              />
-            )}
-          </div>
-        )}
+        {/* Claim flow: full-screen modal overlay */}
+        <ClaimProgressModal
+          open={claimStep >= 0}
+          stepIndex={claimStep}
+          errorIndex={claimErrorIndex}
+          errorMessage={claimErrorIndex !== null ? error : null}
+          amountUsdc={claimAmountDisplay}
+          walletAddress={normalizedLinkedWallet ?? undefined}
+          txHash={claimTxHash}
+          explorerBaseUrl={wallet?.explorerBaseUrl}
+          onClose={() => {
+            setClaimStep(-1);
+            setClaimErrorIndex(null);
+            setClaimTxHash(null);
+          }}
+        />
 
         {/* Non-claim status / error messages */}
         {claimStep < 0 && error && (

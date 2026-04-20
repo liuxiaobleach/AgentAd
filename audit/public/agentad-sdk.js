@@ -1,26 +1,34 @@
 /*
- * AgentAd Verification SDK (v0)
+ * AgentAd SDK (v0)
  * ---------------------------------
  * Publishers embed this script to display verified ads in their pages.
- * The SDK fetches a signed manifest, validates it against the platform's
- * verify endpoint (which in turn checks on-chain state), renders the
- * creative, and overlays a tamper-evident badge.
  *
- * Usage:
- *   <div id="agentad-ad-slot"></div>
- *   <script src="https://<platform>/agentad-sdk.js"></script>
- *   <script>
- *     AgentAdSDK.mount({
- *       container: "#agentad-ad-slot",
- *       manifestUrl: "https://<platform>/api/manifests/<id>",
- *       verifyMode: "api-first",
- *       badgePosition: "top-right",
- *       failMode: "closed",
- *       onVerified: r => console.log("verified", r),
- *       onMismatch: r => console.warn("mismatch", r),
- *       onExpired:  r => console.warn("expired", r),
- *     });
- *   </script>
+ * Two modes:
+ *   1. "manifest" — render a specific pre-signed creative (static ad):
+ *        AgentAdSDK.mount({
+ *          container: "#slot",
+ *          manifestUrl: "https://<platform>/api/manifests/<id>",
+ *          ...
+ *        });
+ *
+ *   2. "slot" — run a real-time auction: bidder agents compete for the
+ *      slot, the winning creative is rendered, the advertiser is charged,
+ *      and the publisher earns per-impression + per-click revenue:
+ *        AgentAdSDK.mount({
+ *          container: "#slot",
+ *          platformOrigin: "https://<platform>",
+ *          slot: {
+ *            slotId: "test_slot_001",   // must be pre-registered to a publisher
+ *            slotType: "desktop-rectangle",
+ *            size: "300x250",
+ *            floorCpm: 5,
+ *            siteCategory: "news",
+ *            userSegments: ["wallet-user"],
+ *          },
+ *          onAuction: r => console.log("auction", r),
+ *          onRendered: r => console.log("rendered", r),
+ *          onError: e => console.warn("err", e),
+ *        });
  */
 (function (global) {
   "use strict";
@@ -93,7 +101,13 @@
     ensureStyles();
     var container = resolveContainer(opts.container);
     var manifestUrl = opts.manifestUrl;
-    if (!manifestUrl) throw new Error("AgentAdSDK: `manifestUrl` is required");
+    var slotConfig = opts.slot;
+    if (!manifestUrl && !slotConfig) {
+      throw new Error("AgentAdSDK: one of `manifestUrl` or `slot` is required");
+    }
+    if (slotConfig && !slotConfig.slotId) {
+      throw new Error("AgentAdSDK: `slot.slotId` is required in slot mode");
+    }
 
     var badgePosition = opts.badgePosition || "top-right";
     var verifyMode = opts.verifyMode || "api-first";
@@ -101,13 +115,25 @@
     var onVerified = typeof opts.onVerified === "function" ? opts.onVerified : noop;
     var onMismatch = typeof opts.onMismatch === "function" ? opts.onMismatch : noop;
     var onExpired  = typeof opts.onExpired  === "function" ? opts.onExpired  : noop;
+    var onAuction  = typeof opts.onAuction  === "function" ? opts.onAuction  : noop;
+    var onRendered = typeof opts.onRendered === "function" ? opts.onRendered : noop;
+    var onError    = typeof opts.onError    === "function" ? opts.onError    : noop;
+    var onClickTracked = typeof opts.onClickTracked === "function" ? opts.onClickTracked : noop;
 
-    var platformOrigin = originOf(manifestUrl);
+    var platformOrigin = opts.platformOrigin
+      ? String(opts.platformOrigin).replace(/\/$/, "")
+      : (manifestUrl ? originOf(manifestUrl) : "");
+    if (!platformOrigin) {
+      throw new Error("AgentAdSDK: could not determine `platformOrigin`");
+    }
+
     var destroyed = false;
     var abortController = (typeof AbortController !== "undefined") ? new AbortController() : null;
 
     container.classList.add("agentad-root");
-    container.innerHTML = '<div class="agentad-loading">Verifying ad…</div>';
+    container.innerHTML = slotConfig
+      ? '<div class="agentad-loading">Requesting ad…</div>'
+      : '<div class="agentad-loading">Verifying ad…</div>';
 
     function render(state) {
       if (destroyed) return;
@@ -221,7 +247,134 @@
       return "pending";
     }
 
+    function renderAuctionCreative(auctionId, creative) {
+      if (destroyed) return;
+      container.innerHTML = "";
+
+      var clickUrl = creative.clickUrl || creative.landingUrl || "#";
+      var imageUrl = absoluteAssetURL(creative.imageUrl, platformOrigin);
+
+      var link = document.createElement("a");
+      link.className = "agentad-link";
+      link.href = clickUrl;
+      link.target = "_blank";
+      link.rel = "noopener noreferrer sponsored";
+
+      link.addEventListener("click", function () {
+        if (!auctionId) return;
+        var url = platformOrigin + "/api/ad-slot/click/" + encodeURIComponent(auctionId);
+        // Use fetch+keepalive as primary: works across origins with CORS, and
+        // failures are observable in devtools (sendBeacon silently drops). For
+        // really old browsers without keepalive support, fall back to beacon.
+        try {
+          fetch(url, { method: "POST", keepalive: true, mode: "cors" })
+            .then(function () { onClickTracked({ auctionId: auctionId }); })
+            .catch(function (err) { console.warn("[AgentAdSDK] click tracking failed:", err); });
+        } catch (_) {
+          if (navigator.sendBeacon) {
+            navigator.sendBeacon(url, new Blob([], { type: "application/json" }));
+            onClickTracked({ auctionId: auctionId });
+          }
+        }
+      });
+
+      var img = document.createElement("img");
+      img.className = "agentad-creative";
+      img.src = imageUrl;
+      img.alt = creative.creativeName || creative.projectName || "Sponsored";
+      link.appendChild(img);
+      container.appendChild(link);
+
+      var badge = document.createElement("div");
+      badge.className = "agentad-badge verified " + badgePosition;
+      badge.textContent = "\u2713 Verified";
+      badge.title = "AgentAd verified bidder | " + (creative.projectName || "");
+      container.appendChild(badge);
+    }
+
+    function runAuction() {
+      var fetchOpts = abortController ? { signal: abortController.signal } : {};
+      var body = {
+        slotId: slotConfig.slotId,
+        slotType: slotConfig.slotType || "desktop-rectangle",
+        size: slotConfig.size || "300x250",
+        floorCpm: typeof slotConfig.floorCpm === "number" ? slotConfig.floorCpm : 0,
+        siteCategory: slotConfig.siteCategory || "",
+        userSegments: Array.isArray(slotConfig.userSegments) ? slotConfig.userSegments : [],
+        siteDomain: slotConfig.siteDomain || window.location.hostname,
+      };
+
+      var timeoutMs = typeof opts.auctionTimeoutMs === "number" ? opts.auctionTimeoutMs : 60000;
+      var pollMs = typeof opts.auctionPollMs === "number" ? opts.auctionPollMs : 1500;
+      var pollTimer = null;
+      var deadlineTimer = null;
+      function clearTimers() {
+        if (pollTimer) clearInterval(pollTimer);
+        if (deadlineTimer) clearTimeout(deadlineTimer);
+      }
+
+      fetch(platformOrigin + "/api/ad-slot/request", Object.assign({
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      }, fetchOpts))
+        .then(function (r) {
+          return r.json().then(function (j) {
+            if (!r.ok) throw new Error(j.error || ("ad-slot/request HTTP " + r.status));
+            return j;
+          });
+        })
+        .then(function (created) {
+          if (destroyed) return;
+          onAuction({ phase: "requested", auctionId: created.auctionId });
+
+          deadlineTimer = setTimeout(function () {
+            clearTimers();
+            if (destroyed) return;
+            container.innerHTML =
+              '<div class="agentad-loading" style="color:#dc2626;">Auction timed out</div>';
+            onError(new Error("auction timed out"));
+          }, timeoutMs);
+
+          pollTimer = setInterval(function () {
+            if (destroyed) { clearTimers(); return; }
+            fetch(platformOrigin + "/api/ad-slot/result/" + encodeURIComponent(created.auctionId), fetchOpts)
+              .then(function (r) { return r.json(); })
+              .then(function (result) {
+                if (destroyed) { clearTimers(); return; }
+                if (result.status === "PENDING") {
+                  onAuction({ phase: "pending", auctionId: created.auctionId, bidsCount: result.bidsCount });
+                  return;
+                }
+                clearTimers();
+                onAuction({ phase: "completed", auctionId: created.auctionId, result: result });
+
+                if (!result.creative) {
+                  container.innerHTML =
+                    '<div class="agentad-loading">No fill</div>';
+                  return;
+                }
+                renderAuctionCreative(created.auctionId, result.creative);
+                onRendered({ auctionId: created.auctionId, result: result });
+              })
+              .catch(function (err) {
+                // transient poll failures — keep trying until the deadline
+                console.warn("[AgentAdSDK] poll error:", err);
+              });
+          }, pollMs);
+        })
+        .catch(function (err) {
+          clearTimers();
+          if (destroyed) return;
+          console.error("[AgentAdSDK] auction failed:", err);
+          container.innerHTML =
+            '<div class="agentad-loading" style="color:#dc2626;">Ad unavailable</div>';
+          onError(err);
+        });
+    }
+
     function run() {
+      if (slotConfig) { runAuction(); return; }
       var fetchOpts = abortController ? { signal: abortController.signal } : {};
 
       fetch(manifestUrl, fetchOpts)
@@ -285,7 +438,9 @@
         container.classList.remove("agentad-root");
       },
       refresh: function () {
-        container.innerHTML = '<div class="agentad-loading">Verifying ad…</div>';
+        container.innerHTML = slotConfig
+          ? '<div class="agentad-loading">Requesting ad…</div>'
+          : '<div class="agentad-loading">Verifying ad…</div>';
         run();
       },
     };

@@ -1,0 +1,21 @@
+flowchart LR
+    A["<b>广告主</b><br/>Advertiser<br/><i>出钱买流量</i>"]
+    P["<b>AgentAd 平台</b><br/><i>AI 撮合 + 审核 + 记账</i>"]
+    U["<b>Publisher</b><br/>流量方<br/><i>出流量赚钱</i>"]
+    E[("<b>BudgetEscrow 合约</b><br/>链上 USDC 托管")]
+
+    A -- "① 充值预算" --> E
+    A -- "② 素材 + 出价策略" --> P
+    U -- "③ 嵌入 SDK 请求广告" --> P
+    P -- "④ 投放广告" --> U
+    P -. "⑤ 按曝光/点击扣款" .-> E
+    E -- "⑥ Publisher 领款" --> U
+
+    classDef advertiser fill:#fef3c7,stroke:#f59e0b,stroke-width:2px
+    classDef platform fill:#dbeafe,stroke:#3b82f6,stroke-width:2px
+    classDef publisher fill:#dcfce7,stroke:#22c55e,stroke-width:2px
+    classDef chain fill:#f3e8ff,stroke:#a855f7,stroke-width:2px
+    class A advertiser
+    class P platform
+    class U publisher
+    class E chain

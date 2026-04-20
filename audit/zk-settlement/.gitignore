@@ -1,0 +1,15 @@
+# Rust / Pico zkVM build artifacts
+target/
+guest/target/
+guest/Cargo.lock
+guest/elf/
+
+# Go binaries produced by `go build ./cmd/...` if run in-place
+host/build-epoch
+host/prove-claim
+host/cmd/build-epoch/build-epoch
+host/cmd/prove-claim/prove-claim
+
+# Local epoch archives / proof blobs
+*.witness
+*.proof

@@ -1,0 +1,46 @@
+flowchart TB
+    subgraph CREATIVE["① 素材生产 + 合规审核链（离线，一次性）"]
+        direction LR
+        CG["<b>Creative Generation Agent</b><br/>━━━━━━━━━━<br/><b>职责</b>：按 brief 生成素材<br/><b>输入</b>：广告主文字 brief<br/><b>输出</b>：图文素材候选<br/><b>底层</b>：Imagen / DALL·E / GPT"]
+        CA["<b>Creative Analysis Agent</b><br/>━━━━━━━━━━<br/><b>职责</b>：多模态合规扫描<br/><b>输入</b>：素材图像 + 文案<br/><b>输出</b>：违禁标签 + 置信度<br/><b>底层</b>：Claude Vision"]
+        TR["<b>Triage Agent</b><br/>━━━━━━━━━━<br/><b>职责</b>：自动分诊判定<br/><b>输入</b>：扫描结果 + 政策库<br/><b>输出</b>：PASS / REJECT / 升级"]
+        AN["<b>Analyst Agent</b><br/>━━━━━━━━━━<br/><b>职责</b>：疑难 case 深度分析<br/><b>输入</b>：升级素材 + 历史判例<br/><b>输出</b>：结构化报告 + 建议"]
+        CG --> CA --> TR
+        TR -. 疑难升级 .-> AN
+    end
+
+    subgraph RUNTIME["② 运行时竞价（每次广告请求，多 agent 并发）"]
+        direction LR
+        BA["<b>Bidder Agent A</b><br/>━━━━━━━━━━<br/><b>职责</b>：代表广告主 1 出价<br/><b>策略</b>：自然语言配置<br/><b>决策</b>：participate? bid_cpm?"]
+        BB["<b>Bidder Agent B</b><br/>━━━━━━━━━━<br/><b>职责</b>：代表广告主 2 出价<br/>（各自独立预算与策略）"]
+        BC["<b>Bidder Agent C</b><br/>━━━━━━━━━━<br/><b>职责</b>：代表广告主 3 出价<br/>（各自独立预算与策略）"]
+        EX["<b>Ad Exchange</b><br/>（Go 撮合引擎，非 LLM）<br/>━━━━━━━━━━<br/><b>职责</b>：第二价格拍卖<br/><b>输入</b>：多路 bid + 预算余量<br/><b>输出</b>：winner + 结算价"]
+        BA --> EX
+        BB --> EX
+        BC --> EX
+    end
+
+    subgraph SUPPORT["③ 用户辅助"]
+        AS["<b>Assistant Agent</b><br/>━━━━━━━━━━<br/><b>职责</b>：自然语言问答 + 操作导航<br/><b>入口</b>：前端右下角常驻 Chat<br/><b>覆盖</b>：广告主 + Publisher 双身份"]
+    end
+
+    Brief["广告主 brief"] --> CG
+    TR == PASS ==> Attest["<b>Attestation 签发</b><br/>（素材进入可投放库）"]
+    AN ==> Attest
+    Attest -. 可投放素材库 .-> BA
+    Attest -. 可投放素材库 .-> BB
+    Attest -. 可投放素材库 .-> BC
+
+    SlotReq["Publisher SDK<br/>实时广告请求"] --> EX
+    EX == 胜出素材 ==> Render["SDK 渲染<br/>+ Verified 徽章"]
+
+    classDef creative fill:#fef3c7,stroke:#f59e0b,stroke-width:1.5px
+    classDef bidder fill:#dbeafe,stroke:#3b82f6,stroke-width:1.5px
+    classDef exchange fill:#bfdbfe,stroke:#1d4ed8,stroke-width:2px
+    classDef support fill:#fce7f3,stroke:#ec4899,stroke-width:1.5px
+    classDef io fill:#f1f5f9,stroke:#64748b,stroke-dasharray: 3 3
+    class CG,CA,TR,AN creative
+    class BA,BB,BC bidder
+    class EX exchange
+    class AS support
+    class Brief,Attest,SlotReq,Render io

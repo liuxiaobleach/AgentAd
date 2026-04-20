@@ -14,6 +14,11 @@ type Config struct {
 	AnthropicAPIKey  string
 	AuditModel       string
 	AssistantModel   string
+	// BidderModel is used for the auction bidder-agent loop. Bids are a high-
+	// volume, low-complexity decision, so defaulting to a fast/cheap model
+	// keeps auction latency low. Set to the same value as AUDIT_MODEL if you
+	// want a single model for everything.
+	BidderModel      string
 	OpenAIAPIKey     string
 	ImageModel       string
 	GeminiAPIKey     string
@@ -56,6 +61,7 @@ func Load() *Config {
 		AnthropicAPIKey:           getEnv("ANTHROPIC_API_KEY", ""),
 		AuditModel:                getEnv("AUDIT_MODEL", "claude-sonnet-4-20250514"),
 		AssistantModel:            getEnv("ASSISTANT_MODEL", "claude-haiku-4-5"),
+		BidderModel:               getEnv("BIDDER_MODEL", "claude-haiku-4-5"),
 		OpenAIAPIKey:              getEnv("OPENAI_API_KEY", ""),
 		ImageModel:                getEnv("IMAGE_MODEL", "dall-e-3"),
 		GeminiAPIKey:              getEnv("GEMINI_API_KEY", ""),

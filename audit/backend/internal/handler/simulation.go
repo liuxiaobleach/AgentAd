@@ -9,6 +9,7 @@ import (
 	"math/rand"
 	"net/http"
 	"sort"
+	"sync"
 
 	"github.com/zkdsp/audit-backend/internal/audit"
 	"github.com/zkdsp/audit-backend/internal/db"
@@ -80,106 +81,29 @@ func (h *Handler) runAuctionInBackground(arDB db.AuctionRequest) {
 		return
 	}
 
-	var bidContexts []agentBidContext
+	// Fan out: each agent's bid loop (including the LLM call) runs concurrently.
+	// Latency is now max(per-agent) instead of sum(per-agent). The critical
+	// section is just the append to bidContexts at the end of each goroutine.
+	var (
+		bidContexts []agentBidContext
+		mu          sync.Mutex
+		wg          sync.WaitGroup
+	)
 
 	for _, agent := range agents {
-		// L3: Pre-bid balance + budget guardrails. Skip agents that cannot
-		// afford even the floor-price impression. This also prevents wasted
-		// LLM calls for bankrupt advertisers.
-		if !h.agentMayBid(ctx, agent, arDB.FloorCpm) {
-			// Record a "no bid" row for transparency in the bids list.
-			h.recordSkippedBid(ctx, arDB.ID, agent.ID, "insufficient balance or budget")
-			continue
-		}
-
-		creatives, err := h.Queries.GetApprovedCreativesByAdvertiser(ctx, agent.AdvertiserID)
-		if err != nil || len(creatives) == 0 {
-			log.Printf("[auction] agent=%s no approved creatives", agent.ID)
-			continue
-		}
-
-		candidates := buildCandidateCreatives(ctx, h, creatives)
-		if len(candidates) == 0 {
-			continue
-		}
-
-		strategyPrompt := ""
-		if agent.StrategyPrompt != nil {
-			strategyPrompt = *agent.StrategyPrompt
-		}
-		siteCat := ""
-		if arDB.SiteCategory != nil {
-			siteCat = *arDB.SiteCategory
-		}
-
-		bidInput := audit.BidderInput{
-			AgentID:        agent.ID,
-			AdvertiserID:   agent.AdvertiserID,
-			Strategy:       agent.Strategy,
-			StrategyPrompt: strategyPrompt,
-			ValuePerClick:  agent.ValuePerClick,
-			MaxBidCpm:      agent.MaxBidCpm,
-			BidRequest: audit.BidRequestInfo{
-				SlotID:       arDB.SlotID,
-				SlotType:     arDB.SlotType,
-				Size:         arDB.Size,
-				FloorCpm:     arDB.FloorCpm,
-				SiteCategory: siteCat,
-				UserSegments: arDB.UserSegments,
-			},
-			Candidates: candidates,
-		}
-
-		bidResult, err := audit.RunBidderAgent(ctx, h.Config.AnthropicAPIKey, h.Config.AuditModel, bidInput, h.Queries)
-		if err != nil {
-			log.Printf("[auction] agent=%s bid failed: %v", agent.ID, err)
-			continue
-		}
-
-		// L1: Hard clamp bid to agent.MaxBidCpm. LLM may (accidentally or via
-		// prompt injection) emit a bid above the advertiser-configured cap;
-		// this line enforces it server-side, prompt be damned.
-		if bidResult.Participate && bidResult.BidCpm > agent.MaxBidCpm {
-			log.Printf("[auction] agent=%s bid clamped %.2f -> %.2f (max_bid_cpm)",
-				agent.ID, bidResult.BidCpm, agent.MaxBidCpm)
-			bidResult.BidCpm = agent.MaxBidCpm
-		}
-		// If clamp or LLM output drops us below floor, disqualify this bid
-		// rather than let the auction pick a bid that can't clear the floor.
-		if bidResult.Participate && bidResult.BidCpm < arDB.FloorCpm {
-			log.Printf("[auction] agent=%s bid %.2f below floor %.2f, skipped",
-				agent.ID, bidResult.BidCpm, arDB.FloorCpm)
-			bidResult.Participate = false
-			reason := fmt.Sprintf("bid %.2f below floor %.2f", bidResult.BidCpm, arDB.FloorCpm)
-			bidResult.Reason = reason
-		}
-
-		log.Printf("[auction] agent=%s participate=%v creative=%s bid=%.2f",
-			agent.ID, bidResult.Participate, bidResult.SelectedCreativeID, bidResult.BidCpm)
-
-		bidDB := db.AuctionBid{
-			AuctionRequestID: arDB.ID,
-			BidderAgentID:    agent.ID,
-		}
-		if bidResult.Participate {
-			bidDB.SelectedCreativeID = &bidResult.SelectedCreativeID
-			bidDB.PredictedCtr = &bidResult.PredictedCtr
-			bidDB.BidCpm = &bidResult.BidCpm
-			bidDB.Confidence = &bidResult.Confidence
-			bidDB.Reason = &bidResult.Reason
-		} else {
-			reason := bidResult.Reason
-			bidDB.Reason = &reason
-		}
-		saved, err := h.Queries.CreateAuctionBid(ctx, bidDB)
-		if err != nil {
-			log.Printf("[auction] save bid failed: %v", err)
-			continue
-		}
-		if bidResult.Participate {
-			bidContexts = append(bidContexts, agentBidContext{agent: agent, bid: saved})
-		}
+		wg.Add(1)
+		go func(agent db.BidderAgent) {
+			defer wg.Done()
+			bc, ok := h.runSingleAgentBid(ctx, arDB, agent)
+			if !ok {
+				return
+			}
+			mu.Lock()
+			bidContexts = append(bidContexts, bc)
+			mu.Unlock()
+		}(agent)
 	}
+	wg.Wait()
 
 	// Dedup self-competition: if an advertiser runs multiple agents, only the
 	// highest-confidence bid from that advertiser participates in the auction.
@@ -215,6 +139,108 @@ func (h *Handler) runAuctionInBackground(arDB db.AuctionRequest) {
 	_, _ = h.Queries.CreateAuctionResult(ctx, result)
 	log.Printf("[auction] request=%s winner=%v settlement=%v clicked=%v",
 		arDB.ID, result.WinnerBidID, result.SettlementPrice, result.Clicked)
+}
+
+// runSingleAgentBid executes one agent's bid flow: pre-bid guardrails, creative
+// selection, LLM bid, clamp-to-max, floor check, persist. Returns (ctx, true)
+// if the agent is a live participant for the auction; (_, false) otherwise.
+// Safe to call concurrently from multiple goroutines — each invocation only
+// writes its own bid row, and CreateAuctionBid uses its own DB transaction.
+func (h *Handler) runSingleAgentBid(
+	ctx context.Context,
+	arDB db.AuctionRequest,
+	agent db.BidderAgent,
+) (agentBidContext, bool) {
+	// L3: Pre-bid balance + budget guardrails. Skip agents that cannot
+	// afford even the floor-price impression.
+	if !h.agentMayBid(ctx, agent, arDB.FloorCpm) {
+		h.recordSkippedBid(ctx, arDB.ID, agent.ID, "insufficient balance or budget")
+		return agentBidContext{}, false
+	}
+
+	creatives, err := h.Queries.GetApprovedCreativesByAdvertiser(ctx, agent.AdvertiserID)
+	if err != nil || len(creatives) == 0 {
+		log.Printf("[auction] agent=%s no approved creatives", agent.ID)
+		return agentBidContext{}, false
+	}
+
+	candidates := buildCandidateCreatives(ctx, h, creatives)
+	if len(candidates) == 0 {
+		return agentBidContext{}, false
+	}
+
+	strategyPrompt := ""
+	if agent.StrategyPrompt != nil {
+		strategyPrompt = *agent.StrategyPrompt
+	}
+	siteCat := ""
+	if arDB.SiteCategory != nil {
+		siteCat = *arDB.SiteCategory
+	}
+
+	bidInput := audit.BidderInput{
+		AgentID:        agent.ID,
+		AdvertiserID:   agent.AdvertiserID,
+		Strategy:       agent.Strategy,
+		StrategyPrompt: strategyPrompt,
+		ValuePerClick:  agent.ValuePerClick,
+		MaxBidCpm:      agent.MaxBidCpm,
+		BidRequest: audit.BidRequestInfo{
+			SlotID:       arDB.SlotID,
+			SlotType:     arDB.SlotType,
+			Size:         arDB.Size,
+			FloorCpm:     arDB.FloorCpm,
+			SiteCategory: siteCat,
+			UserSegments: arDB.UserSegments,
+		},
+		Candidates: candidates,
+	}
+
+	bidResult, err := audit.RunBidderAgent(ctx, h.Config.AnthropicAPIKey, h.Config.BidderModel, bidInput, h.Queries)
+	if err != nil {
+		log.Printf("[auction] agent=%s bid failed: %v", agent.ID, err)
+		return agentBidContext{}, false
+	}
+
+	// L1: Hard clamp bid to agent.MaxBidCpm.
+	if bidResult.Participate && bidResult.BidCpm > agent.MaxBidCpm {
+		log.Printf("[auction] agent=%s bid clamped %.2f -> %.2f (max_bid_cpm)",
+			agent.ID, bidResult.BidCpm, agent.MaxBidCpm)
+		bidResult.BidCpm = agent.MaxBidCpm
+	}
+	if bidResult.Participate && bidResult.BidCpm < arDB.FloorCpm {
+		log.Printf("[auction] agent=%s bid %.2f below floor %.2f, skipped",
+			agent.ID, bidResult.BidCpm, arDB.FloorCpm)
+		bidResult.Participate = false
+		bidResult.Reason = fmt.Sprintf("bid %.2f below floor %.2f", bidResult.BidCpm, arDB.FloorCpm)
+	}
+
+	log.Printf("[auction] agent=%s participate=%v creative=%s bid=%.2f",
+		agent.ID, bidResult.Participate, bidResult.SelectedCreativeID, bidResult.BidCpm)
+
+	bidDB := db.AuctionBid{
+		AuctionRequestID: arDB.ID,
+		BidderAgentID:    agent.ID,
+	}
+	if bidResult.Participate {
+		bidDB.SelectedCreativeID = &bidResult.SelectedCreativeID
+		bidDB.PredictedCtr = &bidResult.PredictedCtr
+		bidDB.BidCpm = &bidResult.BidCpm
+		bidDB.Confidence = &bidResult.Confidence
+		bidDB.Reason = &bidResult.Reason
+	} else {
+		reason := bidResult.Reason
+		bidDB.Reason = &reason
+	}
+	saved, err := h.Queries.CreateAuctionBid(ctx, bidDB)
+	if err != nil {
+		log.Printf("[auction] save bid failed: %v", err)
+		return agentBidContext{}, false
+	}
+	if !bidResult.Participate {
+		return agentBidContext{}, false
+	}
+	return agentBidContext{agent: agent, bid: saved}, true
 }
 
 // settleAuctionWithFallback walks sorted bids and tries to reserve the
