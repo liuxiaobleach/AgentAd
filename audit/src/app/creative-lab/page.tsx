@@ -2,7 +2,9 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { apiFetch } from "@/lib/api";
+import type { BrandKit } from "@/components/BrandKitManager";
 
 interface CreativeOption {
   id: string;
@@ -51,6 +53,22 @@ interface CreativeLabItem {
 interface CreativeLabResponse {
   items: CreativeLabItem[];
   generatedAt: string;
+}
+
+interface StudioRunDetail {
+  run: {
+    id: string;
+    title: string;
+    brief: string;
+    variantCount: number;
+    status: string;
+    createdAt: string;
+  };
+  brandKit?: BrandKit | null;
+  totalCount: number;
+  completedCount: number;
+  failedCount: number;
+  readyCreativeIds: string[];
 }
 
 const statusPriority: Record<string, number> = {
@@ -165,11 +183,14 @@ function pickLabHighlights(items: CreativeLabItem[]) {
 }
 
 export default function CreativeLabPage() {
+  const searchParams = useSearchParams();
+  const runId = searchParams.get("runId");
   const [creatives, setCreatives] = useState<CreativeOption[]>([]);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [lab, setLab] = useState<CreativeLabResponse | null>(null);
   const [loadingList, setLoadingList] = useState(true);
   const [loadingLab, setLoadingLab] = useState(false);
+  const [runContext, setRunContext] = useState<StudioRunDetail | null>(null);
 
   useEffect(() => {
     let stopped = false;
@@ -181,16 +202,18 @@ export default function CreativeLabPage() {
         if (stopped) return;
         const next = Array.isArray(data) ? data : [];
         setCreatives(next);
-        if (selectedIds.length === 0 && next.length > 0) {
-          const defaults = [...next]
-            .sort((left, right) => {
-              const statusDiff = (statusPriority[left.status] ?? 99) - (statusPriority[right.status] ?? 99);
-              if (statusDiff !== 0) return statusDiff;
-              return new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime();
-            })
-            .slice(0, 3)
-            .map((creative) => creative.id);
-          setSelectedIds(defaults);
+        if (!runId && next.length > 0) {
+          setSelectedIds((prev) => {
+            if (prev.length > 0) return prev;
+            return [...next]
+              .sort((left, right) => {
+                const statusDiff = (statusPriority[left.status] ?? 99) - (statusPriority[right.status] ?? 99);
+                if (statusDiff !== 0) return statusDiff;
+                return new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime();
+              })
+              .slice(0, 3)
+              .map((creative) => creative.id);
+          });
         }
       })
       .catch(() => {
@@ -205,7 +228,32 @@ export default function CreativeLabPage() {
     return () => {
       stopped = true;
     };
-  }, []);
+  }, [runId]);
+
+  useEffect(() => {
+    if (!runId) {
+      setRunContext(null);
+      return;
+    }
+
+    let stopped = false;
+    apiFetch(`/api/creative-studio/runs/${runId}`)
+      .then((res) => res.json())
+      .then((data: StudioRunDetail) => {
+        if (stopped) return;
+        setRunContext(data);
+        if (Array.isArray(data.readyCreativeIds) && data.readyCreativeIds.length > 0) {
+          setSelectedIds(data.readyCreativeIds.slice(0, 3));
+        }
+      })
+      .catch(() => {
+        if (!stopped) setRunContext(null);
+      });
+
+    return () => {
+      stopped = true;
+    };
+  }, [runId]);
 
   useEffect(() => {
     if (selectedIds.length === 0) {
@@ -272,6 +320,42 @@ export default function CreativeLabPage() {
           Back to Creatives
         </Link>
       </div>
+
+      {runContext && (
+        <div
+          className="rounded-2xl p-5 fx-enter-up fx-hover-lift"
+          style={{
+            background: "rgba(15,23,42,0.72)",
+            border: "1px solid rgba(168,85,247,0.18)",
+            boxShadow: "0 0 24px rgba(168,85,247,0.08)",
+          }}
+        >
+          <div className="grid xl:grid-cols-[1.08fr,0.92fr] grid-cols-1 gap-6 items-start">
+            <div>
+              <div className="text-[10px] uppercase tracking-[0.24em] text-fuchsia-400 mb-2">Studio Context</div>
+              <h3 className="text-lg font-semibold text-white">{runContext.run.title}</h3>
+              <p className="text-sm text-slate-400 mt-2 leading-7">
+                {runContext.run.brief}
+              </p>
+            </div>
+            <div className="grid sm:grid-cols-2 grid-cols-1 gap-3">
+              <ContextPill label="Variants" value={String(runContext.run.variantCount)} accent="#a855f7" />
+              <ContextPill label="Ready" value={`${runContext.completedCount}/${runContext.totalCount}`} accent="#10b981" />
+              <ContextPill label="Status" value={runContext.run.status} accent="#06b6d4" />
+              <ContextPill label="Brand Kit" value={runContext.brandKit?.name || "None"} accent="#ec4899" />
+            </div>
+          </div>
+
+          {runContext.brandKit && (
+            <div className="grid md:grid-cols-4 grid-cols-1 gap-3 mt-4">
+              <ContextPill label="Voice" value={runContext.brandKit.voiceTone || "Not specified"} accent="#a855f7" />
+              <ContextPill label="Message" value={runContext.brandKit.primaryMessage || "Not specified"} accent="#06b6d4" />
+              <ContextPill label="Palette" value={runContext.brandKit.colorPalette?.join(", ") || "No palette"} accent="#ec4899" />
+              <ContextPill label="Guardrails" value={runContext.brandKit.mandatoryTerms?.join(", ") || "No mandatory terms"} accent="#10b981" />
+            </div>
+          )}
+        </div>
+      )}
 
       <div className="bg-white rounded-2xl border border-slate-200 p-6 fx-enter-up fx-hover-lift" style={{ animationDelay: "80ms" }}>
         <div className="flex items-center justify-between gap-4 mb-4">
@@ -534,6 +618,23 @@ function MetricTile({ label, value, ratio, accent }: { label: string; value: str
           />
         </div>
       )}
+    </div>
+  );
+}
+
+function ContextPill({ label, value, accent }: { label: string; value: string; accent: string }) {
+  return (
+    <div
+      className="rounded-2xl border px-4 py-3"
+      style={{
+        borderColor: `${accent}22`,
+        background: `${accent}10`,
+      }}
+    >
+      <div className="text-[10px] uppercase tracking-[0.2em]" style={{ color: accent }}>
+        {label}
+      </div>
+      <div className="text-sm text-white mt-2 leading-6">{value}</div>
     </div>
   );
 }

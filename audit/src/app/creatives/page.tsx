@@ -4,6 +4,8 @@ import { apiFetch } from "@/lib/api";
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import BrandKitManager, { BrandKit } from "@/components/BrandKitManager";
+import CreativeStudioModal from "@/components/CreativeStudioModal";
 
 interface CreativeListItem {
   id: string;
@@ -20,6 +22,22 @@ interface GenerationStep {
   phase: string;
   message: string;
   output?: string;
+}
+
+interface StudioRunSummary {
+  run: {
+    id: string;
+    title: string;
+    status: "QUEUED" | "RUNNING" | "COMPLETED" | "PARTIAL" | "FAILED";
+    variantCount: number;
+    createdAt: string;
+    autoSubmitAudit: boolean;
+  };
+  brandKitName?: string | null;
+  totalCount: number;
+  completedCount: number;
+  failedCount: number;
+  readyCreativeIds: string[];
 }
 
 const GENERATION_PHASES = [
@@ -114,21 +132,21 @@ function summarizeOutput(text?: string, maxLength = 260) {
 export default function CreativesListPage() {
   const [creatives, setCreatives] = useState<CreativeListItem[]>([]);
   const [showGenModal, setShowGenModal] = useState(false);
+  const [brandKits, setBrandKits] = useState<BrandKit[]>([]);
+  const [studioRuns, setStudioRuns] = useState<StudioRunSummary[]>([]);
   const [loading, setLoading] = useState(true);
 
   const load = () => {
     setLoading(true);
-    apiFetch("/api/creatives")
-      .then((r) => r.json())
-      .then((data: CreativeListItem[]) => {
-        if (Array.isArray(data)) {
-          setCreatives(data);
-        } else {
-          setCreatives([]);
-        }
-      })
-      .catch(() => {
-        setCreatives([]);
+    Promise.all([
+      apiFetch("/api/creatives").then((r) => r.json()).catch(() => []),
+      apiFetch("/api/brand-kits").then((r) => r.json()).catch(() => []),
+      apiFetch("/api/creative-studio/runs?limit=4").then((r) => r.json()).catch(() => []),
+    ])
+      .then(([creativeData, brandKitData, runData]) => {
+        setCreatives(Array.isArray(creativeData) ? creativeData : []);
+        setBrandKits(Array.isArray(brandKitData) ? brandKitData : []);
+        setStudioRuns(Array.isArray(runData) ? runData : []);
       })
       .finally(() => setLoading(false));
   };
@@ -185,7 +203,18 @@ export default function CreativesListPage() {
                   border: "1px solid rgba(168,85,247,0.3)",
                 }}
               >
-                ✨ Generate with AI
+                ✨ Batch Creative Studio
+              </button>
+              <button
+                onClick={() => document.getElementById("brand-kit-section")?.scrollIntoView({ behavior: "smooth", block: "start" })}
+                className="px-4 py-2.5 text-sm font-medium rounded-xl transition-all fx-hover-lift"
+                style={{
+                  background: "rgba(15,23,42,0.78)",
+                  color: "#e2e8f0",
+                  border: "1px solid rgba(6,182,212,0.25)",
+                }}
+              >
+                Manage Brand Kit
               </button>
               <Link
                 href="/creatives/new"
@@ -240,6 +269,92 @@ export default function CreativesListPage() {
         <StudioStatCard label="Approved" value={String(approvedCreatives)} accent="#10b981" delay={80} />
         <StudioStatCard label="In Audit" value={String(reviewPipeline)} accent="#f59e0b" delay={160} />
         <StudioStatCard label="AI Generated" value={String(aiGenerated)} accent="#a855f7" delay={240} />
+      </div>
+
+      <div className="grid xl:grid-cols-[1.1fr,0.9fr] grid-cols-1 gap-6">
+        <div id="brand-kit-section">
+          <BrandKitManager kits={brandKits} onRefresh={load} />
+        </div>
+
+        <section className="rounded-[24px] border p-5 bg-white">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <div className="text-[10px] uppercase tracking-[0.24em] text-cyan-500 mb-2">Recent Studio Runs</div>
+              <h3 className="text-lg font-semibold text-slate-900">Batch runs ready for Creative Lab</h3>
+              <p className="text-sm text-slate-500 mt-1">
+                Launch multiple variants, then jump straight into side-by-side comparison as soon as the run yields results.
+              </p>
+            </div>
+            <button
+              onClick={() => setShowGenModal(true)}
+              className="px-4 py-2 text-sm rounded-xl bg-slate-100 text-slate-700 hover:bg-slate-200"
+            >
+              New Run
+            </button>
+          </div>
+
+          <div className="mt-5 space-y-3">
+            {studioRuns.length === 0 ? (
+              <div className="rounded-2xl border border-dashed border-slate-200 p-5 text-sm text-slate-500">
+                No batch studio runs yet. Start one from the hero section above to generate a reusable comparison set.
+              </div>
+            ) : (
+              studioRuns.map((summary) => (
+                <div key={summary.run.id} className="rounded-2xl border border-slate-200 p-4">
+                  <div className="flex items-start justify-between gap-4">
+                    <div>
+                      <div className="text-sm font-semibold text-slate-900">{summary.run.title}</div>
+                      <div className="text-xs text-slate-500 mt-1">
+                        {summary.run.variantCount} variants
+                        {summary.brandKitName ? ` · Brand Kit: ${summary.brandKitName}` : " · No brand kit"}
+                        {summary.run.autoSubmitAudit ? " · Auto audit" : " · Manual audit"}
+                      </div>
+                    </div>
+                    <span
+                      className="px-2.5 py-1 rounded-full text-[11px] font-medium"
+                      style={{
+                        background:
+                          summary.run.status === "COMPLETED"
+                            ? "rgba(16,185,129,0.12)"
+                            : summary.run.status === "FAILED"
+                            ? "rgba(239,68,68,0.12)"
+                            : "rgba(6,182,212,0.12)",
+                        color:
+                          summary.run.status === "COMPLETED"
+                            ? "#34d399"
+                            : summary.run.status === "FAILED"
+                            ? "#f87171"
+                            : "#06b6d4",
+                      }}
+                    >
+                      {summary.run.status}
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-3 gap-3 mt-4">
+                    <MiniSummary label="Ready" value={String(summary.completedCount)} accent="#10b981" />
+                    <MiniSummary label="Failed" value={String(summary.failedCount)} accent="#ef4444" />
+                    <MiniSummary label="Created" value={new Date(summary.run.createdAt).toLocaleDateString()} accent="#06b6d4" />
+                  </div>
+
+                  <div className="flex items-center justify-between gap-3 mt-4">
+                    <div className="text-xs text-slate-500">
+                      {summary.readyCreativeIds.length > 0
+                        ? `${summary.readyCreativeIds.length} creatives are ready to compare in Creative Lab.`
+                        : "This run is still generating or waiting for its first successful variant."}
+                    </div>
+                    <Link
+                      href={`/creative-lab?runId=${summary.run.id}`}
+                      className="text-sm font-medium text-cyan-600 hover:underline"
+                    >
+                      Open Lab →
+                    </Link>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        </section>
       </div>
 
       <section className="bg-white rounded-2xl border border-slate-200 overflow-hidden fx-enter-up fx-hover-lift" style={{ animationDelay: "120ms" }}>
@@ -349,12 +464,10 @@ export default function CreativesListPage() {
       </section>
 
       {showGenModal && (
-        <GenerateModal
+        <CreativeStudioModal
+          brandKits={brandKits}
           onClose={() => setShowGenModal(false)}
-          onCreated={() => {
-            setShowGenModal(false);
-            load();
-          }}
+          onChanged={load}
         />
       )}
     </div>
@@ -871,6 +984,23 @@ function StudioStatCard({ label, value, accent, delay }: { label: string; value:
       <div className="text-2xl font-semibold" style={{ color: accent }}>
         {value}
       </div>
+    </div>
+  );
+}
+
+function MiniSummary({ label, value, accent }: { label: string; value: string; accent: string }) {
+  return (
+    <div
+      className="rounded-2xl border px-4 py-3"
+      style={{
+        borderColor: `${accent}22`,
+        background: `${accent}10`,
+      }}
+    >
+      <div className="text-[10px] uppercase tracking-[0.2em]" style={{ color: accent }}>
+        {label}
+      </div>
+      <div className="text-sm font-semibold text-slate-900 mt-2">{value}</div>
     </div>
   );
 }

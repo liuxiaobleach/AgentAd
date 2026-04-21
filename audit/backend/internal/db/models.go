@@ -371,3 +371,78 @@ type BidderAgentSkill struct {
 	CreatedAt     time.Time `json:"createdAt"`
 	UpdatedAt     time.Time `json:"updatedAt"`
 }
+
+type BrandKit struct {
+	ID             string    `json:"id"`
+	AdvertiserID   string    `json:"advertiserId"`
+	Name           string    `json:"name"`
+	Description    string    `json:"description"`
+	VoiceTone      string    `json:"voiceTone"`
+	PrimaryMessage string    `json:"primaryMessage"`
+	ColorPalette   []string  `json:"colorPalette"`
+	MandatoryTerms []string  `json:"mandatoryTerms"`
+	BannedTerms    []string  `json:"bannedTerms"`
+	VisualRules    string    `json:"visualRules"`
+	CtaPreferences string    `json:"ctaPreferences"`
+	IsDefault      bool      `json:"isDefault"`
+	CreatedAt      time.Time `json:"createdAt"`
+	UpdatedAt      time.Time `json:"updatedAt"`
+}
+
+type CreativeStudioRunStatus string
+
+const (
+	CreativeStudioRunStatusQueued    CreativeStudioRunStatus = "QUEUED"
+	CreativeStudioRunStatusRunning   CreativeStudioRunStatus = "RUNNING"
+	CreativeStudioRunStatusCompleted CreativeStudioRunStatus = "COMPLETED"
+	CreativeStudioRunStatusPartial   CreativeStudioRunStatus = "PARTIAL"
+	CreativeStudioRunStatusFailed    CreativeStudioRunStatus = "FAILED"
+)
+
+type CreativeStudioItemStatus string
+
+const (
+	CreativeStudioItemStatusQueued    CreativeStudioItemStatus = "QUEUED"
+	CreativeStudioItemStatusRunning   CreativeStudioItemStatus = "RUNNING"
+	CreativeStudioItemStatusCompleted CreativeStudioItemStatus = "COMPLETED"
+	CreativeStudioItemStatusFailed    CreativeStudioItemStatus = "FAILED"
+)
+
+type CreativeStudioRun struct {
+	ID              string                  `json:"id"`
+	AdvertiserID    string                  `json:"advertiserId"`
+	BrandKitID      *string                 `json:"brandKitId,omitempty"`
+	Title           string                  `json:"title"`
+	Brief           string                  `json:"brief"`
+	BaseCreativeName string                 `json:"baseCreativeName"`
+	ProjectName     string                  `json:"projectName"`
+	LandingURL      string                  `json:"landingUrl"`
+	TargetAudiences []string                `json:"targetAudiences"`
+	StyleHint       string                  `json:"styleHint"`
+	AspectRatio     string                  `json:"aspectRatio"`
+	VariantCount    int                     `json:"variantCount"`
+	AutoSubmitAudit bool                    `json:"autoSubmitAudit"`
+	Status          CreativeStudioRunStatus `json:"status"`
+	CreatedAt       time.Time               `json:"createdAt"`
+	UpdatedAt       time.Time               `json:"updatedAt"`
+	CompletedAt     *time.Time              `json:"completedAt,omitempty"`
+}
+
+type CreativeStudioRunItem struct {
+	ID             string                   `json:"id"`
+	RunID          string                   `json:"runId"`
+	CreativeID     string                   `json:"creativeId"`
+	VariantIndex   int                      `json:"variantIndex"`
+	VariantLabel   string                   `json:"variantLabel"`
+	VariantAngle   string                   `json:"variantAngle"`
+	Phase          string                   `json:"phase"`
+	Status         CreativeStudioItemStatus `json:"status"`
+	Error          *string                  `json:"error,omitempty"`
+	CreatedAt      time.Time                `json:"createdAt"`
+	UpdatedAt      time.Time                `json:"updatedAt"`
+	CompletedAt    *time.Time               `json:"completedAt,omitempty"`
+
+	CreativeName   string         `json:"creativeName,omitempty"`
+	ImageURL       *string        `json:"imageUrl,omitempty"`
+	CreativeStatus CreativeStatus `json:"creativeStatus,omitempty"`
+}

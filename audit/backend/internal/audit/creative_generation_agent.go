@@ -20,6 +20,17 @@ type CreativeBrief struct {
 	TargetAudiences []string `json:"targetAudiences,omitempty"`
 	StyleHint       string   `json:"styleHint,omitempty"`   // cyberpunk, minimal, bold, playful, ...
 	AspectRatio     string   `json:"aspectRatio,omitempty"` // 1:1, 16:9, 9:16
+	VariantAngle    string   `json:"variantAngle,omitempty"`
+
+	BrandKitName        string   `json:"brandKitName,omitempty"`
+	BrandDescription    string   `json:"brandDescription,omitempty"`
+	BrandVoiceTone      string   `json:"brandVoiceTone,omitempty"`
+	BrandPrimaryMessage string   `json:"brandPrimaryMessage,omitempty"`
+	BrandColorPalette   []string `json:"brandColorPalette,omitempty"`
+	BrandMandatoryTerms []string `json:"brandMandatoryTerms,omitempty"`
+	BrandBannedTerms    []string `json:"brandBannedTerms,omitempty"`
+	BrandVisualRules    string   `json:"brandVisualRules,omitempty"`
+	BrandCTAPreferences string   `json:"brandCtaPreferences,omitempty"`
 }
 
 // CreativeDirective is the structured plan produced by the Brief Agent (Claude).
@@ -180,6 +191,47 @@ func planCreativeDirective(
 		coalesce(brief.StyleHint, "无特别偏好"),
 		coalesce(brief.AspectRatio, "1:1"),
 	)
+	if strings.TrimSpace(brief.VariantAngle) != "" {
+		userMsg += fmt.Sprintf("\n\n本次批量变体角度：%s", brief.VariantAngle)
+	}
+	if strings.TrimSpace(brief.BrandKitName) != "" ||
+		strings.TrimSpace(brief.BrandDescription) != "" ||
+		strings.TrimSpace(brief.BrandVoiceTone) != "" ||
+		strings.TrimSpace(brief.BrandPrimaryMessage) != "" ||
+		len(brief.BrandColorPalette) > 0 ||
+		len(brief.BrandMandatoryTerms) > 0 ||
+		len(brief.BrandBannedTerms) > 0 ||
+		strings.TrimSpace(brief.BrandVisualRules) != "" ||
+		strings.TrimSpace(brief.BrandCTAPreferences) != "" {
+		userMsg += "\n\n品牌约束："
+		if brief.BrandKitName != "" {
+			userMsg += fmt.Sprintf("\n- Brand Kit: %s", brief.BrandKitName)
+		}
+		if brief.BrandDescription != "" {
+			userMsg += fmt.Sprintf("\n- 品牌描述: %s", brief.BrandDescription)
+		}
+		if brief.BrandVoiceTone != "" {
+			userMsg += fmt.Sprintf("\n- 品牌语气: %s", brief.BrandVoiceTone)
+		}
+		if brief.BrandPrimaryMessage != "" {
+			userMsg += fmt.Sprintf("\n- 核心 message: %s", brief.BrandPrimaryMessage)
+		}
+		if len(brief.BrandColorPalette) > 0 {
+			userMsg += fmt.Sprintf("\n- 品牌色板: %s", strings.Join(brief.BrandColorPalette, ", "))
+		}
+		if len(brief.BrandMandatoryTerms) > 0 {
+			userMsg += fmt.Sprintf("\n- 必须优先体现的术语: %s", strings.Join(brief.BrandMandatoryTerms, ", "))
+		}
+		if len(brief.BrandBannedTerms) > 0 {
+			userMsg += fmt.Sprintf("\n- 禁止出现的术语: %s", strings.Join(brief.BrandBannedTerms, ", "))
+		}
+		if brief.BrandVisualRules != "" {
+			userMsg += fmt.Sprintf("\n- 视觉守则: %s", brief.BrandVisualRules)
+		}
+		if brief.BrandCTAPreferences != "" {
+			userMsg += fmt.Sprintf("\n- CTA 偏好: %s", brief.BrandCTAPreferences)
+		}
+	}
 
 	params := anthropic.MessageNewParams{
 		Model:     anthropic.Model(model),
@@ -242,6 +294,47 @@ func buildImagePrompt(
 		coalesce(brief.StyleHint, "modern professional"),
 		coalesce(brief.AspectRatio, "1:1"),
 	)
+	if strings.TrimSpace(brief.VariantAngle) != "" {
+		userMsg += fmt.Sprintf("\n本次批量变体角度：%s", brief.VariantAngle)
+	}
+	if strings.TrimSpace(brief.BrandKitName) != "" ||
+		strings.TrimSpace(brief.BrandDescription) != "" ||
+		strings.TrimSpace(brief.BrandVoiceTone) != "" ||
+		strings.TrimSpace(brief.BrandPrimaryMessage) != "" ||
+		len(brief.BrandColorPalette) > 0 ||
+		len(brief.BrandMandatoryTerms) > 0 ||
+		len(brief.BrandBannedTerms) > 0 ||
+		strings.TrimSpace(brief.BrandVisualRules) != "" ||
+		strings.TrimSpace(brief.BrandCTAPreferences) != "" {
+		userMsg += "\n品牌约束："
+		if brief.BrandKitName != "" {
+			userMsg += fmt.Sprintf("\n- Brand Kit: %s", brief.BrandKitName)
+		}
+		if brief.BrandDescription != "" {
+			userMsg += fmt.Sprintf("\n- 品牌描述: %s", brief.BrandDescription)
+		}
+		if brief.BrandVoiceTone != "" {
+			userMsg += fmt.Sprintf("\n- 品牌语气: %s", brief.BrandVoiceTone)
+		}
+		if brief.BrandPrimaryMessage != "" {
+			userMsg += fmt.Sprintf("\n- 核心 message: %s", brief.BrandPrimaryMessage)
+		}
+		if len(brief.BrandColorPalette) > 0 {
+			userMsg += fmt.Sprintf("\n- 品牌色板: %s", strings.Join(brief.BrandColorPalette, ", "))
+		}
+		if len(brief.BrandMandatoryTerms) > 0 {
+			userMsg += fmt.Sprintf("\n- 文案里尽量体现: %s", strings.Join(brief.BrandMandatoryTerms, ", "))
+		}
+		if len(brief.BrandBannedTerms) > 0 {
+			userMsg += fmt.Sprintf("\n- 文案与画面都禁止出现: %s", strings.Join(brief.BrandBannedTerms, ", "))
+		}
+		if brief.BrandVisualRules != "" {
+			userMsg += fmt.Sprintf("\n- 视觉守则: %s", brief.BrandVisualRules)
+		}
+		if brief.BrandCTAPreferences != "" {
+			userMsg += fmt.Sprintf("\n- CTA 偏好: %s", brief.BrandCTAPreferences)
+		}
+	}
 
 	params := anthropic.MessageNewParams{
 		Model:     anthropic.Model(model),

@@ -83,6 +83,13 @@ func main() {
 		// AI-generated creatives
 		r.Post("/api/creatives/generate", h.GenerateCreative)
 		r.Get("/api/creatives/{id}/generation-status", h.GetGenerationStatus)
+		r.Get("/api/brand-kits", h.ListBrandKits)
+		r.Post("/api/brand-kits", h.CreateBrandKit)
+		r.Patch("/api/brand-kits/{id}", h.UpdateBrandKit)
+		r.Delete("/api/brand-kits/{id}", h.DeleteBrandKit)
+		r.Get("/api/creative-studio/runs", h.ListCreativeStudioRuns)
+		r.Get("/api/creative-studio/runs/{id}", h.GetCreativeStudioRun)
+		r.Post("/api/creative-studio/runs", h.CreateCreativeStudioRun)
 
 		// Audit Cases
 		r.Get("/api/audit-cases", h.ListAuditCases)
