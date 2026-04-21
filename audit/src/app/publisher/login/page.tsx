@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { setPublisherSession } from "@/lib/publisher-api";
@@ -162,6 +163,16 @@ export default function PublisherLoginPage() {
             </button>
           </div>
         </form>
+
+        <div className="mt-4 text-center">
+          <Link
+            href="/docs#publisher-quickstart"
+            className="text-xs font-medium uppercase tracking-[0.22em]"
+            style={{ color: "#6ee7b7" }}
+          >
+            Read Publisher Guide
+          </Link>
+        </div>
       </div>
     </div>
   );

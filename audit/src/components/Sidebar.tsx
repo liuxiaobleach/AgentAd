@@ -16,11 +16,13 @@ const navItems = [
   { href: "/analyst", label: "Ad Analyst", icon: "\u25C7" },
   { href: "/certificates", label: "Certificates", icon: "\u25C9" },
   { href: "/integrations", label: "Integration", icon: "\u29BF" },
+  { href: "/docs", label: "User Guide", icon: "\u2630" },
 ];
 
 export default function Sidebar({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const { user, logout, loading } = useAuth();
+  const isDocsPage = pathname === "/docs";
   const walletLabel = user?.walletAddress
     ? `${user.walletAddress.slice(0, 6)}...${user.walletAddress.slice(-4)}`
     : "Wallet not linked";
@@ -33,11 +35,15 @@ export default function Sidebar({ children }: { children: React.ReactNode }) {
     return <>{children}</>;
   }
 
-  if (!loading && !user && pathname !== "/login") {
+  if (!loading && !user && !isDocsPage && pathname !== "/login") {
     if (typeof window !== "undefined") {
       window.location.href = "/login";
     }
     return null;
+  }
+
+  if (isDocsPage && !user) {
+    return <>{children}</>;
   }
 
   if (loading) {

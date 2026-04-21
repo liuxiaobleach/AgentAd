@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth";
 
@@ -182,6 +183,15 @@ export default function LoginPage() {
         <p className="text-center mt-6 text-[10px] font-mono" style={{ color: "#1e293b" }}>
           AgentAd v0.2.0 // AI-Powered Ad Platform
         </p>
+        <div className="mt-4 text-center">
+          <Link
+            href="/docs#advertiser-quickstart"
+            className="text-xs font-medium uppercase tracking-[0.22em]"
+            style={{ color: "#38bdf8" }}
+          >
+            Read Advertiser Guide
+          </Link>
+        </div>
       </div>
     </div>
   );

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   Address,
@@ -463,6 +464,12 @@ export default function PublisherDashboardPage() {
             </p>
           </div>
           <div className="flex items-center gap-3">
+            <Link
+              href="/docs#publisher-quickstart"
+              className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-medium text-emerald-700 hover:bg-emerald-100"
+            >
+              Open Guide
+            </Link>
             {user && (
               <div className="text-right text-xs text-slate-500">
                 <div className="font-medium text-slate-700">{user.name}</div>
